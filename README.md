@@ -1,5 +1,6 @@
-# The /comfy/ home for linux users 
+# The /comfy/ home for linux users ☕
 
+Added
 - File Manager : ranger
 - Window Manager : i3
 - Terminal : Kitty
@@ -9,5 +10,6 @@
 - PDF Viewer : Zathura
 - Browser dots : Firefox
 
-![https://giffiles.alphacoders.com/171/171342.gif]
-
+<p align="center">
+  <img src="https://giffiles.alphacoders.com/171/171342.gif" alt="Alt Text" width="500">
+</p
