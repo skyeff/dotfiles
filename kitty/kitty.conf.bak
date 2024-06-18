@@ -1,0 +1,10 @@
+# BEGIN_KITTY_THEME
+# Gruvbox Dark
+include current-theme.conf
+# END_KITTY_THEME
+
+bold_font auto
+font_family Hack Nerd Font
+font_size 13
+background_opacity 0.82
+enable_layouts tall:bias=50;full_size=1;mirrored=false
