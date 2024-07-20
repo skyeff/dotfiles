@@ -6,7 +6,7 @@ Added
 - Terminal : Kitty
 - Top Bar : Polybar
 - Task Manager : btop
-- File Editor : Vim
+- File Editor : Vim and lazyvim
 - PDF Viewer : Zathura
 - Browser dots : Firefox
 
