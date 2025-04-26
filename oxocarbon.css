@@ -1,0 +1,27 @@
+@define-color rosewater #f2e1dc;      /* Light, soft pinkish tone */
+@define-color flamingo #e8b9b3;       /* Muted, soft pinkish-beige */
+@define-color pink #e0a8c4;           /* Soft, light pink */
+@define-color mauve #b7a2d6;          /* Muted lavender with subtle gray */
+@define-color red #d28b98;            /* Subdued rose red */
+@define-color maroon #d18c93;         /* Muted, soft maroon */
+@define-color peach #e2a97b;          /* Warm, subdued peach */
+@define-color yellow #d0bc7d;         /* Soft yellow-beige */
+@define-color green #7ca79e;          /* Muted, earthy green */
+@define-color teal #6aa59d;           /* Soft teal with grayish tint */
+@define-color sky #7da7b4;            /* Muted sky blue */
+@define-color sapphire #6a96b9;       /* Subdued sapphire blue */
+@define-color blue #6b83b5;           /* Soft, desaturated blue */
+@define-color lavender #a5b4e0;       /* Soft lavender with hints of blue */
+@define-color text #8c9ab5;           /* Light, desaturated blue-gray */
+@define-color subtext1 #7d8a9e;       /* Light grayish blue */
+@define-color subtext0 #6b7b92;       /* More muted grayish blue */
+@define-color overlay2 #5f6b79;       /* Muted slate gray */
+@define-color overlay1 #4c5365;       /* Desaturated blue-gray */
+@define-color overlay0 #3a434f;       /* Dark slate blue-gray */
+@define-color surface2 #313748;       /* Very muted dark grayish blue */
+@define-color surface1 #252c39;       /* Deep, dark muted blue-gray */
+@define-color surface0 #1a222e;       /* Almost black, deep muted blue */
+@define-color base #141927;           /* Very dark base tone */
+@define-color mantle #0e101a;         /* Almost black, deep blue */
+@define-color crust #0a0c14;          /* Deep blackish blue */
+
