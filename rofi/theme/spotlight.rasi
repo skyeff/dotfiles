@@ -1,13 +1,10 @@
-/*******************************************************************************
- * MACOS SPOTLIGHT LIKE DARK THEME FOR ROFI 
- * User                 : LR-Tech               
- * Theme Repo           : https://github.com/lr-tech/rofi-themes-collection
- *******************************************************************************/
+/* MACOS SPOTLIGHT LIKE DARK THEME FOR ROFI  */
+/* Author: Newman Sanchez (https://github.com/newmanls) */
 
 * {
-    font:   "SF Pro Text Medium 12";
+    font:   "Montserrat 12";
 
-    bg0:    #282828;
+    bg0:    #161616;
     bg1:    #7E7E7E80;
     bg2:    #0860f2E6;
 
@@ -32,7 +29,7 @@ window {
 }
 
 inputbar {
-    font:       "SF Pro Text Medium 20";
+    font:       "Montserrat 20";
     padding:    12px;
     spacing:    12px;
     children:   [ icon-search, entry ];
@@ -81,6 +78,10 @@ element {
 }
 
 element normal active {
+    text-color: @bg2;
+}
+
+element alternate active {
     text-color: @bg2;
 }
 

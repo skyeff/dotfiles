@@ -34,7 +34,7 @@ exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
 
 # Gaps
 gaps inner 5
-gaps outer 5
+# gaps outer 0
 
 
 # Use pactl to adjust volume in PulseAudio.
@@ -55,7 +55,7 @@ bindsym $mod+Return exec --no-startup-id kitty
 bindsym $mod+Shift+Return exec --no-startup-id thunar
 
 # Colors
-client.focused #3c4841 #3c4841 #ffffff 
+# client.focused #3c4841 #3c4841 #ffffff 
 
 
 ## NEW vvv ########################################################
@@ -248,5 +248,4 @@ bindsym $mod+space+e exec --no-startup-id ibus emoji
 # Startup Aplications 
    exec --no-startup-id picom
    exec --no-startup-id polybar
-   exec --no-startup-id pulseaudio --start
-   exec --no-startup-id feh --bg-fill /home/skye/Imagens/Wallpapers/Desktop/133.jpg 	 
+   exec --no-startup-id feh --bg-fill /home/skye/Imagens/Wallpapers/Desktop/31.png
