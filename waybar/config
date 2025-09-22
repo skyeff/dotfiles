@@ -2,7 +2,7 @@
   "margin-top" : 0,
     "margin-left": 0,
     "margin-right": 0,
-    "height" : 32,
+    "height" : 29,
     "output" : "eDP-1",
     "modules-left": [
       "hyprland/window"
@@ -12,7 +12,7 @@
     ],
     "modules-right": [
     "memory",
-    "bluetooth",
+    "custom/weather",
     "cpu",
     "custom/disk",
     "pulseaudio",
@@ -64,8 +64,8 @@
       },
     },
     "clock": {
-      "tooltip-format": "<big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
-      "format-alt": "{:%Y-%m-%d}"
+      "tooltip-format": "󱦟 <big>{:%Y %B}</big>\n<tt><small>{calendar}</small></tt>",
+      "format-alt": "󱦟 {:%Y-%m-%d}"
     },
     "cpu": {
       "format": "󰻠 {usage}%",
@@ -77,11 +77,18 @@
     "interval": 60
 },
     "memory": {
-    "format": " {used:0.1f}GiB / {total:0.1f}GiB",
+    "format": "  {used:0.1f}GiB / {total:0.1f}GiB",
     "interval": 5,
     "tooltip": true,
     "tooltip-format": "{used} used / {available} available\n{percentage}%"
 },
+"custom/weather": {
+    "format": "{}",
+    "interval": 600,
+    "exec": "~/.config/waybar/scripts/weather.py",
+    "return-type": "json",
+    "tooltip": true
+  },
         "temperature": {
       "critical-threshold": 80,
       "format": "{icon} {temperatureC}°C",
@@ -94,8 +101,8 @@
       },
       "format": "{icon}  {capacity}%",
       "format-full": "{icon}  {capacity}%",
-      "format-charging": "  {capacity}%",
-      "format-plugged": "  {capacity}%",
+      "format-charging": "  {capacity}%",
+      "format-plugged": "  {capacity}%",
       "format-alt": "{time} {icon}",
       "format-icons": ["", "", "", "", ""]
     },
@@ -104,7 +111,7 @@
       "format-ethernet": "{cidr} ",
       "tooltip-format": "{ifname} via {gwaddr} ",
       "format-linked": "{ifname} (No IP) ",
-      "format-disconnected": " ⚠ ",
+      "format-disconnected": "  ",
       "format-alt": "{ifname}: {ipaddr}/{cidr}"
     },
     "privacy": {

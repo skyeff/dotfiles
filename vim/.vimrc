@@ -1,7 +1,30 @@
+"██▒   █▓ ██▓ ███▄ ▄███▓   ▓█████▄  ▒█████  ▄▄▄█████▓  █████▒██▓ ██▓    ▓█████   ██████ 
+"▓██░   █▒▓██▒▓██▒▀█▀ ██▒   ▒██▀ ██▌▒██▒  ██▒▓  ██▒ ▓▒▓██   ▒▓██▒▓██▒    ▓█   ▀ ▒██    ▒ 
+" ▓██  █▒░▒██▒▓██    ▓██░   ░██   █▌▒██░  ██▒▒ ▓██░ ▒░▒████ ░▒██▒▒██░    ▒███   ░ ▓██▄   
+"  ▒██ █░░░██░▒██    ▒██    ░▓█▄   ▌▒██   ██░░ ▓██▓ ░ ░▓█▒  ░░██░▒██░    ▒▓█  ▄   ▒   ██▒
+"   ▒▀█░  ░██░▒██▒   ░██▒   ░▒████▓ ░ ████▓▒░  ▒██▒ ░ ░▒█░   ░██░░██████▒░▒████▒▒██████▒▒
+"   ░ ▐░  ░▓  ░ ▒░   ░  ░    ▒▒▓  ▒ ░ ▒░▒░▒░   ▒ ░░    ▒ ░   ░▓  ░ ▒░▓  ░░░ ▒░ ░▒ ▒▓▒ ▒ ░
+"   ░ ░░   ▒ ░░  ░      ░    ░ ▒  ▒   ░ ▒ ▒░     ░     ░      ▒ ░░ ░ ▒  ░ ░ ░  ░░ ░▒  ░ ░
+"     ░░   ▒ ░░      ░       ░ ░  ░ ░ ░ ░ ▒    ░       ░ ░    ▒ ░  ░ ░      ░   ░  ░  ░  
+"      ░   ░         ░         ░        ░ ░                   ░      ░  ░   ░  ░      ░  
+"     ░                      ░                                                           
+"
+
 " Usa plug.vim como gerenciador de plugins
 call plug#begin('~/.vim/plugged')
 
 set laststatus=2
+set nowrap
+syntax on
+filetype plugin on
+
+nnoremap <C-n> :NERDTreeToggle<CR>
+
+" Autocompletor
+Plug 'valloric/youcompleteme'
+
+" Barra Lateral
+Plug 'scrooloose/nerdtree'
 
 " Melhor barra de status (lightline + gitbranch)
 Plug 'itchyny/lightline.vim'
@@ -25,6 +48,12 @@ Plug 'sheerun/vim-polyglot'
 " Tema escuro de alto contraste com fundo transparente
 Plug 'sainnhe/everforest'
 
+" Vim Table Mode
+Plug 'dhruvasagar/vim-table-mode'
+
+" Melhor syntax highlight em markdown
+Plug 'plasticboy/vim-markdown'
+
 call plug#end()
 
 " Ativa cores no terminal
@@ -47,7 +76,6 @@ function! FugitiveHead()
   return exists('*FugitiveHead') ? FugitiveHead() : ''
 endfunction
 
-
 " Configuração do Floaterm (terminal flutuante no Vim)
 let g:floaterm_keymap_toggle = '<F12>'
 let g:floaterm_transparency = 0
@@ -66,4 +94,3 @@ endif
 
 let g:lsp_diagnostics_enabled = 1
 let g:lsp_text_edit_enabled = 1
-
