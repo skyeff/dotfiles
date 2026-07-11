@@ -1,10 +1,9 @@
--- bootstrap lazy.nvim, LazyVim and your plugins
-require("config.lazy")
+-- ============================================================
+--  Nvim Cogworks — Skye / Artemis
+--  Ponto de entrada: carrega opções, keymaps, autocmds e lazy.nvim
+-- ============================================================
 
-vim.opt.spell = false
-vim.cmd("syntax off")
-vim.diagnostic.config({
-  virtual_text = false, -- Disables inline diagnostic messages (e.g., underlines)
-  signs = true, -- Keeps signs in the gutter if you want them
-  update_in_insert = true,
-})
+require("config.options")
+require("config.keymaps")
+require("config.autocmds")
+require("config.lazy")
