@@ -1,0 +1,587 @@
+#+TITLE: Configuração pessoal do Emacs
+#+AUTHOR: Skye
+#+STARTUP: overview
+#+PROPERTY: header-args:emacs-lisp :tangle yes :comments no
+
+Este ficheiro é a configuração real — o ~init.el~ na mesma pasta é
+deliberadamente mínimo, e só a carrega. Cada bloco de código abaixo
+(~emacs-lisp~) é extraído ("tangled") automaticamente para um ficheiro
+~.el~ em cache sempre que este ~.org~ for mais recente do que esse
+cache; o arranque não fica mais lento por causa disto.
+
+Combina os motions do Vim (evil-mode) com o modelo nativo do Emacs
+(M-x, C-x, C-c, point/mark, buffers, kill-ring) — os dois sistemas
+coexistem em vez de um substituir o outro, como a secção Evil-mode
+explica em detalhe.
+
+* 1. Gestão de pacotes
+
+O ~package.el~ é o gestor de pacotes embutido no Emacs. Diz-lhe onde
+procurar pacotes externos — três arquivos, cada um com uma política de
+curadoria diferente: MELPA (comunitário, sem curadoria central), GNU
+ELPA (mantido pela FSF), NonGNU ELPA (mantido pela FSF, mas sem exigir
+copyright assignment do autor — é onde o ~sly~ está efectivamente
+publicado, apesar de instruções antigas do próprio projecto mencionarem
+o MELPA).
+
+#+begin_src emacs-lisp
+(require 'package)
+
+(setq package-archives
+      '(("melpa"  . "https://melpa.org/packages/")
+        ("gnu"    . "https://elpa.gnu.org/packages/")
+        ("nongnu" . "https://elpa.nongnu.org/nongnu/")))
+
+(package-initialize)
+#+end_src
+
+O MELPA reconstrói pacotes continuamente com novos timestamps e remove
+os antigos; um índice cacheado mas obsoleto aponta para ficheiros
+~.tar~ que já não existem no servidor, e a instalação falha com 404
+("Not found") — foi o que aconteceu com ~consult~/~magit~/~corfu~ e
+depois com ~sly~. Actualiza-se incondicionalmente, em vez de só
+quando o índice está completamente vazio:
+
+#+begin_src emacs-lisp
+(package-refresh-contents)
+#+end_src
+
+~use-package~ estrutura de forma declarativa a instalação e a
+configuração de cada pacote. Desde o Emacs 29 já vem embutido; em
+versões anteriores instala-se uma única vez.
+
+#+begin_src emacs-lisp
+(unless (package-installed-p 'use-package)
+  (package-install 'use-package))
+
+(require 'use-package)
+(setq use-package-always-ensure t) ; instala automaticamente se ainda não existir
+#+end_src
+
+O Custom (~M-x customize-*~) escreve, por omissão, um bloco
+~custom-set-variables~/~custom-set-faces~ directamente no ficheiro de
+configuração activo — cada alteração feita pela interface gráfica
+reescreveria esse bloco no meio deste ficheiro literário. Redirecciona-se
+para um ficheiro à parte, carregado condicionalmente:
+
+#+begin_src emacs-lisp
+(setq custom-file (locate-user-emacs-file "custom.el"))
+(when (file-exists-p custom-file)
+  (load custom-file))
+#+end_src
+
+* 2. Limpeza da interface gráfica
+
+Isto não é sobre keybindings — é sobre elementos visuais herdados da
+era GUI dos anos 90, que ocupam espaço sem função para quem trabalha
+sobretudo pelo teclado.
+
+#+begin_src emacs-lisp
+(menu-bar-mode -1)   ; remove a barra de menu superior (File/Edit/...)
+(tool-bar-mode -1)   ; remove a barra de ícones, se o Emacs a tiver compilado
+(scroll-bar-mode -1) ; remove a barra de scroll lateral
+
+(setq inhibit-startup-screen t)   ; remove o ecrã de boas-vindas ao abrir
+(setq ring-bell-function 'ignore) ; remove o "toque de sino" visual/sonoro em erros
+
+(column-number-mode 1)   ; mostra o número da coluna, além da linha
+(global-hl-line-mode 1)  ; realça a linha onde o cursor (point) está
+#+end_src
+
+* 3. Numeração de linhas
+
+~display-line-numbers-mode~ é a numeração nativa do Emacs — absoluta,
+não relativa. Numeração relativa só faz sentido combinada com motions
+modais do Vim (5j, 3dd); como usas os comandos nativos do Emacs (C-n,
+C-p, M-g M-g para ir a uma linha específica, etc.), a numeração absoluta
+é a que corresponde ao teu fluxo de trabalho real.
+
+Em vez de ligar globalmente e depois excluir modo a modo (uma lista que
+cresceria a cada pacote novo, e que já ficou desactualizada uma vez —
+chegou a mencionar ~dirvish-mode~ muito depois de o dirvish ter sido
+removido), liga-se apenas onde há texto contínuo para editar por
+posição de linha: ~prog-mode~ e ~text-mode~ são as classes-mãe de que
+praticamente todo o modo de edição deriva (emacs-lisp-mode, lisp-mode,
+LaTeX-mode, org-mode, python-mode...). Dired, Magit, Sly, dashboard,
+terminais — nenhum deles deriva de nenhuma das duas, por isso ficam de
+fora automaticamente, sem precisares de os listar, agora ou no futuro.
+
+#+begin_src emacs-lisp
+(add-hook 'prog-mode-hook #'display-line-numbers-mode)
+(add-hook 'text-mode-hook #'display-line-numbers-mode)
+#+end_src
+
+* 4. Tema visual
+
+~doom-themes~ é a colecção de temas usada por omissão — inclui o
+~doom-1337~ (portado do tema 1337 do VSCode), carregado como tema de
+arranque. ~modus-themes~ continua disponível como alternativa nativa
+(sem dependências externas, contraste AAA por construção) — não
+desaparece, só deixa de ser o tema por omissão; podes trocar para ele
+a qualquer momento com ~consult-theme~, mais abaixo.
+
+#+begin_src emacs-lisp
+(use-package doom-themes) ; instala primeiro, para o tema ficar disponível
+
+(load-theme 'doom-1337 t)
+#+end_src
+
+O fundo deve continuar a ser o do próprio emulador de terminal
+(Alacritty/kitty/etc.), não o que o tema imporia. Em modo texto (-nw),
+o Emacs pinta o fundo com a cor RGB do tema aproximada ao ANSI mais
+próximo, sobrepondo-se ao fundo real do terminal — ~unspecified-bg~
+instrui-o a NÃO pintar o fundo, deixando o terminal fazê-lo.
+~line-number~ entra na lista para que a numeração de linha não fique
+com um bloco de cor à parte do resto. A barra de estado (secção 5) fica
+deliberadamente fora desta lista — é a única superfície que o pedido
+original excluiu da transparência.
+
+#+begin_src emacs-lisp
+(defun meu/fundo-transparente-no-terminal (&optional frame)
+  (let ((frame (or frame (selected-frame))))
+    (unless (display-graphic-p frame)
+      (dolist (face '(default fringe line-number line-number-current-line))
+        (set-face-background face "unspecified-bg" frame)))))
+(add-hook 'after-make-frame-functions #'meu/fundo-transparente-no-terminal) ; reaplica em cada novo frame (ex.: emacsclient)
+(meu/fundo-transparente-no-terminal) ; aplica já ao frame corrente
+#+end_src
+
+Troca de tema sem editares este ficheiro — a interface é
+~consult-theme~ (secção 12, tecla ~C-c t~): lista todos os temas
+instalados — modus-vivendi/modus-operandi nativos + toda a colecção
+doom-themes — com pré-visualização ao vivo enquanto navegas os
+candidatos, e aplica ao confirmares. Esta função garante duas coisas em
+cada troca, independentemente de ser invocada via ~consult-theme~ ou
+via ~M-x load-theme~ directamente: desactiva o(s) tema(s) anterior(es)
+antes de aplicar o novo (sem isto, temas empilham-se e misturam faces
+de forma imprevisível), e reaplica a transparência de fundo definida
+acima, que de outro modo se perderia a cada novo tema carregado.
+
+#+begin_src emacs-lisp
+(defun meu/trocar-tema-com-seguranca (orig-fun &rest args)
+  (mapc #'disable-theme custom-enabled-themes)
+  (apply orig-fun args)
+  (meu/fundo-transparente-no-terminal))
+(advice-add 'load-theme :around #'meu/trocar-tema-com-seguranca)
+#+end_src
+
+* 5. Barra de estado (mode-line) — doom-modeline
+
+~doom-modeline~ é o pacote de mode-line mais usado na comunidade Emacs
+— integrado, de forma independente do resto do framework, no Doom
+Emacs, Centaur Emacs e Spacemacs. Mostra: ícone por linguagem/major-mode,
+estado do git (via ~vc-mode~, com ícone e cores próprias), indicador do
+estado modal do evil (Normal/Insert/Visual, cada um com cor distinta), e
+contagem de erros/avisos do flymake (relevante para o LaTeX e o Lisp,
+secções 16 e 17). Usa o ~nerd-icons~ já instalado na secção 9 — sem
+dependência nova.
+
+#+begin_src emacs-lisp
+(use-package doom-modeline
+  :init (doom-modeline-mode 1)
+  :custom
+  (doom-modeline-height 28)
+  (doom-modeline-bar-width 3)
+  (doom-modeline-icon t)                             ; requer nerd-icons, já instalado
+  (doom-modeline-major-mode-icon t)
+  (doom-modeline-buffer-file-name-style 'truncate-from-project)
+  (doom-modeline-modal-icon t)                       ; mostra o estado evil activo (N/I/V), cor própria por estado
+  (doom-modeline-env-version t))                     ; versão do interpretador/compilador do major-mode (python, gcc, etc.)
+#+end_src
+
+* 6. Realce de sintaxe — mais eficaz e evidente
+
+~font-lock-mode~ é o motor nativo de realce, activo por omissão, mas
+num nível de detalhe conservador — ~font-lock-maximum-decoration~ a
+~t~ activa todas as categorias de realce que cada modo disponibiliza,
+não apenas o subconjunto mínimo.
+
+#+begin_src emacs-lisp
+(setq font-lock-maximum-decoration t)
+(global-font-lock-mode 1)
+#+end_src
+
+~rainbow-delimiters~ colore cada par de parênteses segundo a
+profundidade de aninhamento. Em Lisp (Common Lisp, Emacs Lisp) a
+estrutura do programa é inteiramente definida por parênteses aninhados
+— o realce convencional (que só distingue tipo de token: função,
+string, comentário) não expõe essa estrutura; a cor por profundidade,
+sim.
+
+#+begin_src emacs-lisp
+(use-package rainbow-delimiters
+  :hook (prog-mode . rainbow-delimiters-mode))
+#+end_src
+
+Tree-sitter — nativo desde o Emacs 29 — substitui o realce por
+expressão regular por realce fundado na árvore sintáctica real da
+linguagem: mais preciso em casos onde o font-lock tradicional falha
+(distinguir uma variável de um campo de struct em C, por exemplo).
+Requer uma gramática compilada por linguagem — instala-se uma única
+vez, por linguagem, com ~M-x treesit-install-language-grammar~. Abrir
+um ficheiro cujo modo ~-ts~ foi remapeado abaixo, sem a gramática
+correspondente instalada, resulta em erro — não em retrocesso
+silencioso para o modo não-ts. Remove da lista qualquer linguagem cuja
+gramática ainda não tenhas instalado.
+
+#+begin_src emacs-lisp
+(when (and (fboundp 'treesit-available-p) (treesit-available-p))
+  (setq major-mode-remap-alist
+        '((python-mode . python-ts-mode)
+          (c-mode      . c-ts-mode)
+          (c++-mode    . c++-ts-mode))))
+#+end_src
+
+* 7. Ajustes gerais
+
+#+begin_src emacs-lisp
+(fset 'yes-or-no-p 'y-or-n-p) ; responde com y/n em vez de yes/no por extenso
+
+(setq backup-directory-alist '(("." . "~/.emacs.d/backups")))
+(setq auto-save-file-name-transforms '((".*" "~/.emacs.d/auto-save/" t)))
+
+(setq-default indent-tabs-mode nil) ; indentação com espaços, não tabs
+(setq-default tab-width 4)
+
+(global-auto-revert-mode 1) ; recarrega automaticamente ficheiros alterados fora do Emacs
+#+end_src
+
+* 8. Evil-mode — motions do Vim em simultâneo com os bindings nativos
+
+~evil~ introduz os estados modais do Vim (Normal/Insert/Visual) e os
+motions associados (h j k l, dd, yy, ciw, /padrão, etc.). Não substitui
+os bindings nativos do Emacs — coexistem por operarem em camadas
+distintas do sistema de keymaps:
+
+- Letras isoladas (h, j, k, d, y, p, ...) só têm significado Vim
+  quando estás em ~evil-normal-state~. Nesse estado, ~hjkl~ move o
+  cursor; fora dele (Insert state), inserem-se como texto normal.
+- Sequências com modificador (C-x, C-c, M-x, C-g) pertencem ao keymap
+  global do Emacs, que o evil não intercepta por omissão. Por isso
+  ~C-x C-f~ (find-file), ~M-x~ (executa comando) e ~C-x C-s~ (grava)
+  continuam a funcionar exactamente como antes, em qualquer estado do
+  evil.
+
+Resultado: navegas e editas texto com motions do Vim, mas continuas a
+usar M-x, C-x, C-c para tudo o que é específico do Emacs. Nenhum dos
+dois sistemas é substituído pelo outro; operam em espaços de teclas
+disjuntos.
+
+~evil-want-keybinding~ tem de ser ~nil~ antes de o evil carregar — é o
+próprio ~evil-collection~ (secção 11) que o exige, para desactivar o
+submódulo legado ~evil-keybindings~, que caso contrário disputa com o
+~evil-collection~ pela definição dos mesmos keymaps.
+
+#+begin_src emacs-lisp
+(use-package evil
+  :init
+  (setq evil-want-keybinding nil)
+  (setq evil-want-C-u-scroll t)      ; C-u faz scroll para cima (comportamento Vim)
+  (setq evil-undo-system 'undo-redo) ; usa o sistema nativo de undo do Emacs 28+
+  :config
+  (evil-mode 1))
+#+end_src
+
+* 9. Dashboard — conteúdo útil ao abrir o Emacs
+
+Substitui o buffer ~*scratch*~ inicial por um painel com secções
+navegáveis: ficheiros recentes, bookmarks, projectos, agenda do
+org-mode.
+
+~all-the-icons~ usa várias fontes próprias, seleccionadas por-glifo —
+mecanismo que só a face-rendering de uma GUI consegue explorar. Num
+terminal, há uma única fonte activa; qualquer glifo fora dela aparece
+como "???". ~nerd-icons~ resolve isto: é uma única fonte, extensa o
+suficiente para cobrir os mesmos glifos, e é essa mesma fonte que
+defines como fonte do PRÓPRIO TERMINAL (Alacritty/kitty/etc.) — fora
+do Emacs.
+
+#+begin_src emacs-lisp
+(use-package nerd-icons
+  ;; PRÉ-REQUISITO EXÓGENO AO EMACS, EM DUAS PARTES:
+  ;;   1. M-x nerd-icons-install-fonts   — instala a fonte no sistema
+  ;;   2. Define essa mesma fonte como a fonte do teu emulador de
+  ;;      terminal (ex.: em Alacritty, font.normal.family no
+  ;;      alacritty.toml) — sem este passo 2, o Emacs continua a pedir
+  ;;      o glifo correcto, mas o terminal continua a desenhá-lo com a
+  ;;      fonte errada.
+  :custom
+  (nerd-icons-font-family "Symbols Nerd Font Mono")) ; ajusta ao nome exacto da fonte instalada
+
+(use-package dashboard
+  :init
+  (setq dashboard-startup-banner 'logo) ; logótipo alternativo do Emacs; usa 'official para o logótipo oficial, ou um caminho de imagem próprio
+  (setq dashboard-icon-type 'nerd-icons)    ; nerd-icons é o único dos dois com suporte fiável em terminal
+  (setq dashboard-display-icons-p t)        ; garante a tentativa de ícones mesmo fora de GUI
+  (setq dashboard-center-content t)
+  (setq dashboard-show-shortcuts t)         ; mostra a tecla de atalho de cada secção
+  (setq dashboard-set-heading-icons t)      ; ícone junto ao título de cada secção
+  (setq dashboard-set-file-icons t)         ; ícone junto a cada ficheiro/projecto listado
+  (setq dashboard-items '((recents   . 5)   ; 5 ficheiros abertos mais recentemente
+                          (bookmarks . 5)   ; 5 bookmarks (C-x r m para criares um)
+                          (projects  . 5)   ; 5 projectos conhecidos (via project.el nativo)
+                          (agenda    . 5))) ; 5 entradas próximas da agenda org-mode, se existir
+  :config
+  (dashboard-setup-startup-hook))
+
+(setq initial-buffer-choice
+      (lambda () (get-buffer "*dashboard*")))
+#+end_src
+
+* 10. which-key — descoberta de atalhos nativos e dos motions evil
+
+Mostra, num pequeno painel inferior, as continuações possíveis de uma
+sequência de teclas incompleta (ex.: depois de C-x, que teclas seguem
+disponíveis). Isto acelera a memorização dos atalhos nativos do Emacs
+— C-x, C-c, M-x — sem substituir nenhum deles.
+
+#+begin_src emacs-lisp
+(use-package which-key
+  :init (which-key-mode 1)
+  :custom (which-key-idle-delay 0.4))
+#+end_src
+
+* 11. Dired — gestor de ficheiros nativo, motions ranger, dotfiles, ícones
+
+Dirvish foi removido por completo: dired nativo é suficiente para o
+workflow pretendido. Três capacidades sobrepostas: navegação h/l ao
+estilo ranger, alternância de dotfiles com C-h, e ícones por tipo de
+ficheiro.
+
+#+begin_src emacs-lisp
+(setq dired-listing-switches
+      "-l --almost-all --human-readable --group-directories-first --no-group")
+(setq dired-dwim-target t)                        ; adivinha destino com 2 dired lado a lado
+(setq delete-by-moving-to-trash t)                ; apagar move para o lixo, não elimina irreversivelmente
+(setq dired-kill-when-opening-new-dired-buffer t) ; navega sem acumular buffers (Emacs ≥ 28)
+#+end_src
+
+#+begin_src emacs-lisp
+(use-package evil-collection
+  :after evil
+  :init
+  (setq evil-collection-mode-list '(dired)) ; único módulo activo
+  :config
+  (evil-collection-init))
+#+end_src
+
+~evil-collection-dired~ não redefine ~h~/~l~ para navegação de
+directórios por omissão; herda apenas ~j~/~k~/~gg~/~G~ do motor
+genérico do evil. Definem-se aqui directamente, depois de
+~evil-collection-init~ no texto do ficheiro, para ficarem
+garantidamente como última palavra sobre estas duas teclas. ~C-h~
+sobrepõe-se, dentro deste buffer especificamente, ao prefixo de ajuda
+nativo — a sobreposição é local a ~dired-mode-map~, fora de um buffer
+dired continua a abrir o sistema de ajuda normalmente.
+
+#+begin_src emacs-lisp
+(with-eval-after-load 'dired
+  (require 'dired-x) ; extensão nativa do Emacs (não MELPA) — fornece dired-omit-mode
+
+  (setq dired-omit-files (concat dired-omit-files "\\|^\\..+$"))
+  (setq dired-omit-verbose nil) ; não anuncia na minibuffer a cada alternância
+
+  (evil-define-key 'normal dired-mode-map
+    "h" #'dired-up-directory  ; sobe ao directório pai
+    "l" #'dired-find-file)    ; entra no directório / abre o ficheiro
+
+  (define-key dired-mode-map (kbd "C-h") #'dired-omit-mode))
+#+end_src
+
+~nerd-icons-dired~ acrescenta um ícone por tipo de ficheiro a cada
+linha da listagem — usa o mesmo ~nerd-icons~ já instalado na secção 9,
+sem dependência nova. Ícones e renomeação em lote (Wdired, ~C-x C-q~)
+não coexistem bem: o ícone conta como parte do nome do ficheiro para o
+parser do wdired, partindo o resultado. Desliga-se automaticamente ao
+entrares em wdired, volta a ligar-se ao saíres.
+
+#+begin_src emacs-lisp
+(use-package nerd-icons-dired
+  :after nerd-icons
+  :hook (dired-mode . nerd-icons-dired-mode)
+  :config
+  (advice-add 'wdired-change-to-wdired-mode :before
+              (lambda (&rest _) (when nerd-icons-dired-mode (nerd-icons-dired-mode -1))))
+  (advice-add 'wdired-change-to-dired-mode :after
+              (lambda (&rest _) (nerd-icons-dired-mode 1))))
+#+end_src
+
+* 12. Completion e navegação — qualidade de vida
+
+A completion nativa (M-x, C-x b, C-x C-f) é funcional mas austera: sem
+ordenação por relevância, sem preview, sem correspondência fora de
+ordem. Este bloco substitui-a por uma pilha vertical, mantendo o mesmo
+ponto de entrada — M-x continua a ser M-x, apenas a superfície de
+selecção melhora.
+
+#+begin_src emacs-lisp
+(use-package vertico
+  :init (vertico-mode 1))
+
+(use-package orderless
+  ;; Escreves termos em qualquer ordem, separados por espaço; cada
+  ;; termo filtra independentemente — não precisas do prefixo exacto.
+  :custom
+  (completion-styles '(orderless basic))
+  (completion-category-overrides '((file (styles basic partial-completion)))))
+
+(use-package marginalia
+  :init (marginalia-mode 1))
+
+(use-package consult
+  :bind
+  (("C-x b"   . consult-buffer)      ; substitui switch-to-buffer
+   ("M-y"     . consult-yank-pop)    ; substitui yank-pop, com preview do kill-ring
+   ("C-s"     . consult-line)        ; substitui isearch dentro do buffer actual
+   ("M-g M-g" . consult-goto-line)   ; ir para linha, com preview
+   ("C-c t"   . consult-theme)))     ; troca de tema com preview ao vivo — ver mecanismo na secção 4
+
+(use-package avy
+  :bind ("M-j" . avy-goto-char-timer)) ; M-j evita colidir com o "j" do evil em normal-state
+#+end_src
+
+* 13. Git
+
+Magit: a interface de git de referência no ecossistema Emacs — status,
+staging por excerto (hunk), rebase interactivo, tudo por teclado, sem
+sair do editor.
+
+#+begin_src emacs-lisp
+(use-package magit
+  :bind ("C-x g" . magit-status))
+
+(use-package diff-hl
+  :init (global-diff-hl-mode 1))
+#+end_src
+
+* 14. Completion em buffer
+
+~corfu~ mostra sugestões de completion num popup junto ao cursor à
+medida que escreves — completa nomes de função, variável, ficheiro,
+conforme o back-end activo em cada modo (nativo via
+~completion-at-point-functions~; um cliente LSP como o Eglot
+acrescenta-se a essa mesma lista sem exigir reconfiguração aqui).
+
+#+begin_src emacs-lisp
+(use-package corfu
+  :init (global-corfu-mode 1)
+  :custom
+  (corfu-auto t)          ; abre o popup automaticamente, sem tecla dedicada
+  (corfu-auto-delay 0.2)
+  (corfu-auto-prefix 2))  ; só a partir de 2 caracteres, para não disparar a cada letra
+#+end_src
+
+* 15. Fonte — Hack Nerd Font, apenas em modo gráfico
+
+Em modo texto (-nw), a fonte é sempre a do próprio emulador de
+terminal — o Emacs não tem controlo sobre isso, nem deve tentar (mesma
+lógica aplicada à cor de fundo, secção 4). Em modo gráfico, o Emacs
+escolhe a fonte por si, e é aí que esta secção actua — repete-se a
+cada novo frame gráfico (ex.: ~emacsclient -c~), à semelhança da
+função de transparência.
+
+#+begin_src emacs-lisp
+(defvar meu/fonte-gui "Hack Nerd Font-13") ; ajusta o tamanho (após o "-") ao teu gosto
+
+(defun meu/aplicar-fonte-gui (&optional frame)
+  (let ((frame (or frame (selected-frame))))
+    (when (display-graphic-p frame)
+      (set-face-attribute 'default frame :font meu/fonte-gui))))
+(add-hook 'after-make-frame-functions #'meu/aplicar-fonte-gui)
+(meu/aplicar-fonte-gui)
+#+end_src
+
+* 16. LaTeX — AUCTeX, compilação e sincronização com o PDF
+
+AUCTeX substitui o suporte nativo do Emacs para LaTeX — limitado a
+realce de sintaxe — por compilação integrada, detecção de macros do
+próprio documento, e sincronização bidireccional com o visualizador de
+PDF (SyncTeX). O nome do pacote no MELPA (~auctex~) não corresponde ao
+nome da biblioteca carregada (~tex~) — por isso ~:ensure~ recebe o
+símbolo explícito.
+
+#+begin_src emacs-lisp
+(use-package tex
+  :ensure auctex
+  :custom
+  (TeX-auto-save t)                     ; guarda entre sessões a informação sobre macros definidas no documento
+  (TeX-parse-self t)                    ; analisa o próprio documento à procura de macros/ambientes customizados
+  (TeX-PDF-mode t)                      ; compila directamente para PDF (pdflatex), não para DVI
+  (TeX-source-correlate-mode t)         ; activa o SyncTeX
+  (TeX-source-correlate-start-server t) ; inicia o servidor que recebe o salto do PDF de volta ao Emacs
+  (TeX-save-query nil)                  ; grava automaticamente antes de compilar, sem perguntar
+  (TeX-master nil)                      ; pergunta/detecta qual é o ficheiro principal em projectos multi-ficheiro
+  :hook
+  ((LaTeX-mode . TeX-source-correlate-mode)
+   (LaTeX-mode . turn-on-reftex) ; referências cruzadas e citações (\ref, \cite) com completion
+   (LaTeX-mode . flymake-mode))  ; diagnósticos no buffer; requer chktex instalado no sistema
+  :config
+  ;; Visualizador — Zathura assume-se coerente com um setup Arch/Hyprland
+  ;; minimalista; troca por "evince" ou "okular" se usares outro.
+  (setq TeX-view-program-selection '((output-pdf "Zathura")))
+  (setq TeX-view-program-list
+        '(("Zathura" ("zathura --synctex-forward %n:0:%b -x \"emacsclient +%%{line} %%{input}\" %o")))))
+
+(use-package reftex
+  :ensure nil ; distribuído com o AUCTeX
+  :after tex
+  :custom
+  (reftex-plug-into-AUCTeX t))
+
+(use-package auctex-latexmk
+  :after tex
+  :config
+  (auctex-latexmk-setup)
+  (setq TeX-command-default "LatexMk"))
+#+end_src
+
+* 17. Lisp — edição estrutural e REPLs (Emacs Lisp + Common Lisp)
+
+Duas linguagens distintas partilham esta secção: Emacs Lisp já vem com
+suporte nativo (~elisp-mode~); Common Lisp precisa de um REPL externo
+ligado por protocolo (~sly~, sucessor melhor mantido do clássico
+~slime~).
+
+~paredit~ mantém os parênteses sempre equilibrados: apagar/inserir
+opera sobre s-expressions inteiras, não sobre caracteres soltos. Os
+seus bindings usam sobretudo ~M-~/~C-~ — não conflitua com o evil, que
+intercepta letras isoladas.
+
+#+begin_src emacs-lisp
+(use-package paredit
+  :hook ((emacs-lisp-mode lisp-mode lisp-interaction-mode sly-mrepl-mode) . paredit-mode))
+#+end_src
+
+Common Lisp — Sly liga o Emacs a um processo SBCL persistente. ~M-x
+sly~ inicia o REPL; ~C-c C-c~ compila e avalia a definição sob o
+cursor; ~C-c C-k~ compila o ficheiro inteiro.
+
+#+begin_src emacs-lisp
+(use-package sly
+  :custom
+  (inferior-lisp-program "sbcl")) ; troca por "ccl", "ecl", etc., se usares outra implementação
+#+end_src
+
+Eldoc (nativo) mostra a assinatura da função sob o cursor na área de
+eco; Flymake dá diagnósticos por byte-compilação incremental — o mesmo
+motor já usado no LaTeX, aqui com um back-end diferente.
+
+#+begin_src emacs-lisp
+(add-hook 'emacs-lisp-mode-hook #'eldoc-mode)
+(add-hook 'emacs-lisp-mode-hook #'flymake-mode)
+#+end_src
+
+* 18. Clipboard — integração com o sistema em terminal
+
+Um Emacs em terminal (-nw) não tem, por si só, nenhum acesso ao
+clipboard do compositor (Hyprland/Wayland) — não é uma questão de
+keybinding, é uma questão de o terminal nunca expor essa API a
+programas de texto puro. ~xclip~ (o pacote Emacs, apesar do nome)
+detecta Wayland automaticamente e usa ~wl-clipboard~ por baixo —
+depois disto, ~y~/~p~/~C-y~ passam a ler e escrever directamente no
+clipboard do sistema, não só no kill-ring interno do Emacs.
+
+#+begin_src emacs-lisp
+(use-package xclip
+  :init (xclip-mode 1))
+#+end_src
