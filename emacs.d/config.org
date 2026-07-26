@@ -1,5 +1,5 @@
-#+TITLE: Configuração pessoal do Emacs
-#+AUTHOR: Skye
+#+TITLE: Emacs Cogworks 
+#+AUTHOR: Skye F.
 #+STARTUP: overview
 #+PROPERTY: header-args:emacs-lisp :tangle yes :comments no
 
@@ -317,6 +317,7 @@ do Emacs.
   (setq dashboard-show-shortcuts t)         ; mostra a tecla de atalho de cada secção
   (setq dashboard-set-heading-icons t)      ; ícone junto ao título de cada secção
   (setq dashboard-set-file-icons t)         ; ícone junto a cada ficheiro/projecto listado
+  (setq dashboard-projects-backend 'project-el) ; usa o project.el nativo — sem isto, o widget "projects" fica sempre vazio, mesmo com a entrada abaixo
   (setq dashboard-items '((recents   . 5)   ; 5 ficheiros abertos mais recentemente
                           (bookmarks . 5)   ; 5 bookmarks (C-x r m para criares um)
                           (projects  . 5)   ; 5 projectos conhecidos (via project.el nativo)
