@@ -25,8 +25,8 @@ monitor= HDMI-A-1, preferred, auto, auto
 # Guide https://wiki.hyprland.org/Configuring/Keywords/
 
 $terminal = kitty
-$menu = albert toggle
-$browser = zen-browser
+$menu = ulauncher
+$browser = firefox
 
 #################
 ### AUTOSTART ###
@@ -34,8 +34,10 @@ $browser = zen-browser
 
 exec-once = avizo-service
 exec-once = waybar
-exec-once = swww-daemon
-exec-once = albert
+exec-once = swaybg -i ~/Pictures/Wallpapers/Desktop/Artwork/88.png -m fill
+exec-once = swaync
+exec-once = ulauncher --hide-window
+
 #############################
 ### ENVIRONMENT VARIABLES ###
 #############################
@@ -44,26 +46,24 @@ exec-once = albert
 
 env = XCURSOR_SIZE,24
 env = HYPRCURSOR_SIZE,24
-
-# Configurações para Albert no Wayland
-# Adicionar/modificar:
-env = QT_QPA_PLATFORM,wayland
-env = QT_WAYLAND_DISABLE_WINDOWDECORATION,1
-env = QT_WAYLAND_FORCE_DPI,physical
-env = QT_AUTO_SCREEN_SCALE_FACTOR,1
+env = XCURSOR_THEME,AppleCursor
+env = HYPRCURSOR_THEME,AppleCursor
+env = GTK_THEME,Adwaita:dark
 
 # Ou usando Alt+Space (mais tradicional)
-bind = ALT, SPACE, exec, albert toggle
+bind = ALT, SPACE, exec, ulauncher-toggle
 
-windowrulev2 = noborder, class:^(albert)$
-windowrulev2 = noshadow, class:^(albert)$
-windowrulev2 = noblur, class:^(albert)$
-windowrulev2 = float, class:^(albert)$
-windowrulev2 = center, class:^(albert)$
-windowrulev2 = rounding 0, class:^(albert)$
-windowrulev2 = size 600 400, class:^(albert)$
-windowrulev2 = animation popin, class:^(albert)$
-windowrulev2 = stayfocused, class:^(albert)$
+windowrule{
+	name = remove-ulauncher-blur-and-shadow
+	match:class = ulauncher
+	no_blur = on
+	no_shadow = on
+	border_size = 0
+}
+
+layerrule = blur on, match:namespace waybar
+layerrule = animation slide right, match:namespace swaync-control-center
+
 
 #####################
 ### LOOK AND FEEL ###
@@ -95,33 +95,30 @@ general {
 decoration {
     rounding = 10
 
-    # Change transparency of focused and unfocused windows
     active_opacity = 1.0
     inactive_opacity = 1.0
 
     shadow {
-        enabled = true 
+        enabled = false
         range = 13
         render_power = 10
-        color = rgba(0, 0, 0, 0.7)   # Cor da sombra (RGBA) - preto semi-transparente
-        offset = 6 6                 # Deslocamento X Y da sombra
+        offset = 6 6
     }
 
-    # Guide https://wiki.hyprland.org/Configuring/Variables/#blur
     blur {
         enabled = true
-        size = 10
+        size = 12
         passes = 2
         vibrancy = 0.1696
         new_optimizations = true
         xray = false
-        contrast = 1.0          # Adicionar
-        brightness = 1.0        # Adicionar
-        noise = 0.01           # Adicionar
-        special = false        # Adicionar
-        popups = true          # Adicionar
+        contrast = 1.0
+        brightness = 1.0
+        noise = 0.01
+        special = false
+        popups = true
     }
-   }
+}
 
 # Guide https://wiki.hyprland.org/Configuring/Variables/#animations
 animations {
@@ -152,21 +149,8 @@ animations {
     animation = workspacesOut, 1, 2.94, almostLinear, slide
 }
 
-# Ref https://wiki.hyprland.org/Configuring/Workspace-Rules/
-# "Smart gaps" / "No gaps when only"
-# uncomment all if you wish to use that.
-# workspace = w[tv1], gapsout:0, gapsin:0
-# workspace = f[1], gapsout:0, gapsin:0
-# windowrulev2 = bordersize 0, floating:0, onworkspace:w[tv1]
-# windowrulev2 = rounding 0, floating:0, onworkspace:w[tv1]
-# windowrulev2 = bordersize 0, floating:0, onworkspace:f[1]
-# windowrulev2 = rounding 0, floating:0, onworkspace:f[1]
-
 # See https://wiki.hyprland.org/Configuring/Dwindle-Layout/ for more
-dwindle {
-    pseudotile = true # Master switch for pseudotiling. Enabling is bound to mainMod + P in the keybinds section below
-    preserve_split = true # You probably want this
-}
+
 
 # See https://wiki.hyprland.org/Configuring/Master-Layout/ for more
 master {
@@ -178,10 +162,6 @@ misc {
     # force_default_wallpaper = 0 # Set to 0 or 1 to disable the anime mascot wallpapers
     disable_hyprland_logo = true # If true disables the random hyprland logo / anime girl background. :(
 }
-
-# Definindo Cursor
-env = XCURSOR_THEME,AppleCursor
-env = HYPRCURSOR_THEME,AppleCursor
 
 #############
 ### INPUT ###
@@ -206,11 +186,6 @@ input {
     }
 }
 
-# https://wiki.hyprland.org/Configuring/Variables/#gestures
-#gestures {
-#    workspace_swipe = false
-#}
-
 # Example per-device config
 # See https://wiki.hprland.org/Configuring/Keywords/#per-device-input-configs for more
 device {
@@ -219,7 +194,6 @@ device {
     name = atml3000:00-03eb:2168-touchpad
     sensitivity = 0.5
 }
-
 
 ###################
 ### KEYBINDINGS ###
@@ -236,24 +210,24 @@ bind = $mainMod, E, exec, $fileManager
 bind = $mainMod, SPACE, togglefloating,
 bind = $mainMod, P, exec, $browser
 # bind = $mainMod, P, pseudo, # dwindle
-bind = $mainMod, J, togglesplit, # dwindle
+# bind = $mainMod, J, togglesplit, # dwindle
 bind = $mainMod SHIFT, L, exec, $lockscreen
+
+bind = $mainMod, N, exec, swaync-client -t -sw
+bind = $mainMod SHIFT, N, exec, swaync-client -d -swi
 
 # Move focus with mainMod + arrow keys (brings window to front in floating mode)
 bind = $mainMod, h, movefocus, l
-bind = $mainMod, l, movefocus, r  
+bind = $mainMod, l, movefocus, r
 bind = $mainMod, j, movefocus, d
 bind = $mainMod, k, movefocus, u
 
 # Alternative: Use cyclenext for cycling through windows (good for both modes)
-bind = $mainMod, Tab, cyclenext, 
+bind = $mainMod, Tab, cyclenext,
 
 # Additional bindings for better window management
 bind = $mainMod, F, bringactivetotop  # Manually bring active window to front
 bind = $mainMod SHIFT, F, focusCurrentOrLast  # Toggle between current and last focused window
-
-# Window rules to ensure proper focus behavior
-windowrulev2 = stayfocused, floating:1  # Keep floating windows focused when clicked
 
 # Switch workspaces with mainMod + [0-9]
 bind = $mainMod, 1, workspace, 1
@@ -307,7 +281,7 @@ bind = ALT, R, submap, resize
 submap = resize
 
 # Hyprshot Keybindings | FIXPOINT
-bind = $mainMod, S, exec, dbus-run-session hyprshot -m window -m region
+bind = $mainMod, s, exec, hyprshot -m region
 
 # Set keybindings for resizing using Vim keys
 binde = , h, resizeactive, -50 0   # Resize left
@@ -339,18 +313,9 @@ submap = reset
 binde = , XF86MonBrightnessUp, exec, brightnessctl set +10%
 binde = , XF86MonBrightnessDown, exec, brightnessctl set 10%-
 
-# Screenshot management | FIXPOINT
-# bind = $mainMod, S, exec, dbus-run-session hyprshot -m 
-
 ##############################
 ### WINDOWS AND WORKSPACES ###
 ##############################
 
 # See https://wiki.hyprland.org/Configuring/Window-Rules/ for more
 # See https://wiki.hyprland.org/Configuring/Workspace-Rules/ for workspace rules
-
-# Ignore maximize requests from apps. You'll probably like this.
-windowrulev2 = suppressevent maximize, class:.*
-
-# Fix some dragging issues with XWayland
-windowrulev2 = nofocus,class:^$,title:^$,xwayland:1,floating:1,fullscreen:0,pinned:0

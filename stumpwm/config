@@ -1,0 +1,217 @@
+;;; -*- mode: lisp; -*-
+;;; ~/.stumpwmrc — configuração base do StumpWM
+;;;
+;;; Referências tomadas:
+;;;   1. hyprland.conf — paleta cromática, papel de parede, e a semântica
+;;;      dos atalhos (float/tile, terminal, navegador, lançador).
+;;;   2. Exemplo de Configuração StumpWM — o predicado FLOATINGP e o par
+;;;      FLOAT-WINDOW / UNFLOAT-WINDOW que sustentam o alternador entre
+;;;      mosaico e flutuação, e o padrão de bordas finas.
+;;;
+;;; Revisão desta versão:
+;;;   - O picom foi removido por inteiro; sem compositor, a sombra deixa
+;;;     de existir. O StumpWM continua sem compor janelas nativamente —
+;;;     essa limitação estrutural não desaparece, apenas deixa de ser
+;;;     contornada aqui.
+;;;   - CPU, RAM e Wi-Fi passam a ser lidos pelos módulos oficiais da
+;;;     stumpwm-contrib (cpu, mem, wifi) em vez de funções que invocavam
+;;;     top/free/nmcli por sub-processo. Os módulos operam por leitura
+;;;     directa de /proc e /sys (cpu, mem) ou via iwconfig (wifi),
+;;;     poupando três subprocessos a cada ciclo da mode-line.
+;;;   - Integração com o Emacs via módulo oficial swm-emacs: gere um
+;;;     daemon Emacs e abre/eleva um frame através de emacsclient.
+;;;   - O lançador deixa de depender do dmenu (ausente); "d" abre agora
+;;;     o app-menu, um menu Lisp nativo da StumpWM — sem processo
+;;;     externo, sem dependência além do que já está carregado.
+;;;
+;;; DEPENDÊNCIAS (fora o próprio StumpWM):
+;;;   sudo pacman -S feh xorg-xsetroot stumpwm-contrib wireless_tools emacs
+;;; stumpwm-contrib está empacotado oficialmente no repositório 'extra'
+;;; do Arch — não é necessário clonar o repositório manualmente.
+
+(in-package :stumpwm)
+
+;;; ------------------------------------------------------------------
+;;; 1. Módulos contrib e Quicklisp
+;;; ------------------------------------------------------------------
+;; Caminho de instalação do pacote oficial stumpwm-contrib no Arch.
+;; Se tiveres clonado o repositório manualmente noutro local, ajusta
+;; este caminho (ex.: ~/.config/stumpwm/modules/).
+(init-load-path #p"/usr/share/stumpwm/contrib/")
+
+(let ((quicklisp-init (merge-pathnames ".cache/quicklisp/setup.lisp"
+                                        (user-homedir-pathname))))
+  (when (probe-file quicklisp-init)
+    (load quicklisp-init)))
+
+(load-module "cpu")        ; directiva %C — uso e temperatura da CPU
+(load-module "mem")        ; directiva %M — percentagem de RAM em uso
+(load-module "wifi")       ; directiva %I — ESSID e intensidade de sinal
+(load-module "swm-emacs")  ; comandos SWM-EMACS / EMACS-DAEMON-START, etc.
+(load-module "app-menu")   ; comando SHOW-MENU — lançador Lisp nativo
+
+;;; ------------------------------------------------------------------
+;;; 2. Funções auxiliares
+;;; ------------------------------------------------------------------
+(defun executable-p (name)
+  "Devolve o caminho de NAME se presente no PATH; NIL caso contrário.
+Condiciona os comandos de arranque à existência real do executável,
+evitando falhas silenciosas quando uma dependência falta."
+  (let ((which-out (string-trim '(#\Space #\Linefeed)
+                                 (run-shell-command (concat "which " name) t))))
+    (unless (string-equal "" which-out) which-out)))
+
+(defun floatingp (window)
+  "Predicado: verdadeiro sse WINDOW pertence à classe float-window.
+Reproduzido do Exemplo de Configuração StumpWM; distingue os dois
+comandos MY-FLOAT-THIS / MY-TILE-THIS definidos abaixo."
+  (typep window 'stumpwm::float-window))
+
+;;; ------------------------------------------------------------------
+;;; 3. Programas de referência
+;;;    (paralelo directo às variáveis $terminal / $menu / $browser do
+;;;    teu hyprland.conf)
+;;; ------------------------------------------------------------------
+(defvar *my-terminal* "kitty")
+(defvar *my-browser*  "firefox")
+(defvar *my-wallpaper* "~/Pictures/Wallpapers/Desktop/Artwork/88.png")
+
+;;; ------------------------------------------------------------------
+;;; 4. Arranque
+;;; ------------------------------------------------------------------
+;; Cursor por defeito
+(run-shell-command "xsetroot -cursor_name left_ptr")
+
+;; Papel de parede via feh — equivalente directo do 'swaybg' do Hyprland
+(when (executable-p "feh")
+  (run-shell-command (format nil "feh --bg-fill ~A" *my-wallpaper*)))
+
+;; Arranca o daemon do Emacs em segundo plano, sob o mesmo nome que o
+;; módulo swm-emacs espera (swm-emacs::*emacs-daemon-name*, por defeito
+;; "stumpwm-emacs"). Sem este passo, o primeiro disparo do atalho C-z e
+;; apenas iniciaria o daemon, sem abrir janela — o módulo só eleva um
+;; frame quando o daemon já está de pé.
+(when (executable-p "emacs")
+  (run-shell-command "emacs --daemon=stumpwm-emacs"))
+
+;;; ------------------------------------------------------------------
+;;; 5. Tecla de prefixo geral
+;;; ------------------------------------------------------------------
+;; Os atalhos ligados a *root-map* (secção 8) passam primeiro por esta
+;; tecla: pressiona Ctrl+Z, solta, depois pressiona a tecla do comando
+;; — ex.: Ctrl+Z, depois "c", abre um terminal.
+;; Nota: Ctrl+Z é, por convenção Unix, o atalho de SIGTSTP (suspender
+;; processo) em terminais; ao assumi-lo como prefixo, esse gesto deixa
+;; de chegar às aplicações enquanto o StumpWM estiver activo.
+(set-prefix-key (kbd "C-z"))
+
+;;; ------------------------------------------------------------------
+;;; 6. Configurações básicas
+;;; ------------------------------------------------------------------
+(setf *window-format* "%m%s%50t"
+      *window-border-style* :thin
+      *normal-border-width* 2
+      *maxsize-border-width* 2
+      *transient-border-width* 2
+      *mouse-focus-policy* :sloppy   ; foco segue o rato, como no Hyprland
+      *message-window-gravity* :center
+      *input-window-gravity* :center)
+
+;;; ------------------------------------------------------------------
+;;; 7. Alternância flutuação / mosaico — Ctrl+F e Ctrl+T
+;;; ------------------------------------------------------------------
+;; Par assimétrico: MY-FLOAT-THIS actua só sobre janela em mosaico;
+;; MY-TILE-THIS só sobre janela já flutuante — evita chamadas
+;; redundantes a FLOAT-WINDOW/UNFLOAT-WINDOW.
+(defcommand my-float-this () ()
+  "Torna a janela em foco flutuante."
+  (let ((win (current-window))
+        (group (current-group)))
+    (when (and win (not (floatingp win)))
+      (stumpwm::float-window win group))))
+
+(defcommand my-tile-this () ()
+  "Devolve a janela em foco ao mosaico, encerrando o seu estado flutuante."
+  (let ((win (current-window))
+        (group (current-group)))
+    (when (and win (floatingp win))
+      (stumpwm::unfloat-window win group))))
+
+;; Ligados directamente a *top-map*: funcionam a qualquer momento, sem
+;; a tecla de prefixo — tal como o togglefloating do hyprland.conf.
+;; Atenção: sobrepõem-se aos atalhos nativos Ctrl+F/Ctrl+T de algumas
+;; aplicações (busca de texto, transposição de caracteres); remapeia se
+;; colidir com o teu fluxo de trabalho.
+(define-key *top-map* (kbd "C-f") "my-float-this")
+(define-key *top-map* (kbd "C-t") "my-tile-this")
+
+;;; ------------------------------------------------------------------
+;;; 8. Atalhos base sob o prefixo Ctrl+Z
+;;; ------------------------------------------------------------------
+;; app-menu: constrói o menu sobre SELECT-FROM-MENU, o widget nativo da
+;; StumpWM — corre dentro da mesma imagem Lisp, sem processo externo.
+;; Cada entrada aceita uma string (comando de shell) ou um símbolo
+;; (comando StumpWM já definido, ex.: MY-FLOAT-THIS).
+(setf app-menu:*app-menu*
+      `(("Aplicações"
+         ("Terminal"  ,*my-terminal*)
+         ("Navegador" ,*my-browser*)
+         ("Emacs"     swm-emacs))))
+
+(define-key *root-map* (kbd "c") (concat "exec " *my-terminal*))
+(define-key *root-map* (kbd "b") (concat "exec " *my-browser*))
+(define-key *root-map* (kbd "d") "show-menu")       ; lançador nativo (app-menu)
+;; Preferires estética "Spotlight"? Instala ulauncher ou albert e troca
+;; a linha acima por, por exemplo:
+;;   (define-key *root-map* (kbd "d") "exec ulauncher-toggle")
+(define-key *root-map* (kbd "e") "swm-emacs")       ; abre/eleva o Emacs
+(define-key *root-map* (kbd "q") "delete-window")   ; fecho educado (WM_DELETE)
+(define-key *root-map* (kbd "Q") "quit-confirm")    ; sair do StumpWM, com confirmação
+
+;;; ------------------------------------------------------------------
+;;; 9. Barra de estado (mode-line) — módulos stumpwm-contrib
+;;; ------------------------------------------------------------------
+;; %C, %M e %I são directivas registadas pelos módulos cpu/mem/wifi
+;; carregados na secção 1; cada uma lê a métrica directamente do
+;; kernel, sem sub-processo de shell interposto.
+
+;; CPU: percentagem de uso seguida da temperatura (lida da thermal zone
+;; x86_pkg_temp, detectada automaticamente pelo próprio módulo — mais
+;; robusto do que fixar um número de zona à mão).
+(setf cpu::*cpu-modeline-fmt* "%c %t")
+
+;; RAM: apenas a percentagem em uso; troca por "%a%p" se preferires ver
+;; também a memória disponível em valor absoluto.
+(setf mem::*mem-modeline-fmt* "%p")
+
+;; Wi-Fi: ESSID e intensidade de sinal (formato por defeito do módulo).
+;; O módulo depende de iwconfig (pacote wireless_tools); a ferramenta é
+;; oficialmente obsoleta face à API nl80211/iw, mas continua a ser o
+;; que o módulo sabe falar. wifi::*wireless-device* fica NIL (auto-
+;; detecção); define-o explicitamente se tiveres mais de uma interface.
+(setf wifi:*iwconfig-path* "iwconfig")  ; resolvido via PATH, não /sbin
+
+;; Preto levemente acinzentado-azulado, ecoando o tom (0,0,0) das bordas
+;; do teu hyprland.conf sem lhe ser idêntico.
+(setf *mode-line-background-color* "#14161d"
+      *mode-line-foreground-color* "#c8ccd6")
+
+(setf *time-modeline-string* "%a %d/%m/%Y  %H:%M")
+
+(setf *screen-mode-line-format*
+      (list
+       "^7[^B^4%n^7^b] "   ; grupo/workspace activo
+       "^>"                 ; empurra o resto p/ a direita
+       "%C  "               ; CPU (uso + temperatura)
+       "%M  "               ; RAM (percentagem)
+       "%I  "               ; Wi-Fi (ESSID + sinal)
+       "%d"                 ; data/hora
+       " "))
+
+(setf *mode-line-timeout* 3)
+
+(defun enable-mode-line-everywhere ()
+  (loop for screen in *screen-list* do
+        (loop for head in (screen-heads screen) do
+              (enable-mode-line screen head t))))
+(enable-mode-line-everywhere)

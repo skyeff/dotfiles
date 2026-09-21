@@ -15,6 +15,8 @@ fn git-branch {
   }
 }
 
+fn fetch { fastfetch --config ~/.config/fastfetch/paleofetch.jsonc }
+
 set edit:prompt = {
   styled "λ" magenta
   var gb = (git-branch)
@@ -23,3 +25,4 @@ set edit:prompt = {
   }
   styled "["(tilde-abbr $pwd)"]$ " default
 }
+set paths = [/usr/bin/vendor_perl $@paths]

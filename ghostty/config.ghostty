@@ -1,0 +1,8 @@
+window-padding-x = 5
+window-padding-y = 12
+
+background-opacity = 0.8
+background-blur = true
+theme = 12-bit Rainbow
+font-size = 12
+font-family = "FiraMono Nerd Font"

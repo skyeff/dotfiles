@@ -1,0 +1,48 @@
+# ~/.config/ticker/.ticker.yaml
+# Configuração Ticker — Tech Stocks
+
+# Lista de símbolos (formato simples)
+watchlist:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - META
+  - TSLA
+  - NVDA
+  - AMD
+  - INTC
+  - TSM
+  - AVGO
+  - QCOM
+  - ASML
+  - MU
+  - CRM
+  - ORCL
+  - ADBE
+  - NOW
+  - SNOW
+  - PLTR
+  - AI
+  - DELL
+  - HPE
+  - CRWD
+  - PANW
+  - QQQ
+  - XLK
+
+# Intervalo de actualização (segundos)
+refresh-interval: 10
+
+# Exibir resumo portfolio
+show-summary: true
+
+# Exibir fundamentals (P/E, market cap)
+show-fundamentals: true
+
+# Ordenação
+# Opções: alpha, value, change
+sort: change
+
+# Separador visual
+show-separator: true
