@@ -122,7 +122,7 @@ a qualquer momento com ~consult-theme~, mais abaixo.
 
 #+begin_src emacs-lisp
   (use-package doom-themes) ; instala primeiro, para o tema ficar disponível
-  (load-theme 'doom-dark+)
+  (load-theme 'doom-dark+ t)
 
 #+end_src
 
@@ -356,6 +356,8 @@ ficheiro.
 (setq dired-dwim-target t)                        ; adivinha destino com 2 dired lado a lado
 (setq delete-by-moving-to-trash t)                ; apagar move para o lixo, não elimina irreversivelmente
 (setq dired-kill-when-opening-new-dired-buffer t) ; navega sem acumular buffers (Emacs ≥ 28)
+(setq dired-recursive-deletes 'always) ; apaga pastas com subpastas dentro sem reconfirmar a cada nível
+(setq dired-recursive-copies 'always)  ; idem para copiar árvores de directórios inteiras
 #+end_src
 
 #+begin_src emacs-lisp
@@ -595,6 +597,22 @@ clipboard do sistema, não só no kill-ring interno do Emacs.
   :commands vterm
   :config
   (setq vterm-max-scrollback 10000))
+#+end_src
+
+Copiar/colar num terminal com emulação real funciona de forma
+diferente de um buffer de texto normal — o buffer está, por omissão,
+"ocupado" a enviar cada tecla directamente ao processo do shell, não a
+inserir texto no sentido habitual do Emacs. ~C-c C-t~ entra em
+~vterm-copy-mode~ (navegável/seleccionável com motions evil normais,
+~y~ copia); mas colar de volta com ~p~/~P~ nativos do evil falha
+("Buffer is read-only") porque tentam inserir directamente no buffer
+em vez de invocar ~vterm-yank~ — é o ~evil-collection~ que faz essa
+tradução, e faltava aqui:
+
+#+begin_src emacs-lisp
+(with-eval-after-load 'evil-collection
+  (add-to-list 'evil-collection-mode-list 'vterm)
+  (evil-collection-vterm-setup))
 #+end_src
 
 * 20. PDF Tools dentro do proprio emacs
