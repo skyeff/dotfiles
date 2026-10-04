@@ -1,0 +1,517 @@
+;;; -*- mode: lisp; -*-
+
+(in-package :stumpwm)
+
+;;;; =====================================================================
+;;;; 0. PAINEL DE PARÂMETROS — tudo o que se ajusta com frequência
+;;;; =====================================================================
+
+;;; Cores gerais (^0 texto, ^1 fundo; ^2..^8 acentos, usados na barra)
+(defparameter *cfg-cor-fundo*      "#14161d")
+(defparameter *cfg-cor-texto*      "#c8ccd6")
+(defparameter *cfg-cor-borda-msg*  "#f72f33")  ; borda das mensagens
+(defparameter *cfg-acentos*                    ; ^2 vermelho ^3 verde ^4 azul
+  '("#f72f33" "#689d6a" "#62bfef"              ; ^5 amarelo ^6 magenta
+    "#fabd2f" "#a644bf" "#cc4a0e" "#56b6c2"))  ; ^7 castanho ^8 ciano
+
+;;; Cores da barra (por defeito herdam as gerais)
+(defparameter *cfg-barra-fundo* *cfg-cor-fundo*)
+(defparameter *cfg-barra-texto* *cfg-cor-texto*)
+
+;;; Fonte (Hack Nerd Font via ttf-fonts; sem ela, cai na fonte core)
+(defparameter *cfg-fonte-familia*  "Hack Nerd Font")
+(defparameter *cfg-fonte-estilo*   "Bold")     ; "Regular" ou "Bold"
+(defparameter *cfg-fonte-tamanho*  16)         ; texto
+(defparameter *cfg-fonte-icones*   17)         ; glifos da barra
+(defparameter *cfg-fonte-core*     "-xos4-terminus-medium-r-normal--20-*-*-*-*-*-*-*")
+
+;;; Barra
+(defparameter *cfg-barra-padding-y* 6)         ; altura extra (px)
+(defparameter *cfg-barra-padding-x* 8)
+(defparameter *cfg-hora-formato*   "%H:%M")    ; ex.: "%a %d/%m %H:%M"
+(defparameter *cfg-bateria*        "BAT0")     ; /sys/class/power_supply/<x>
+(defparameter *cfg-intervalo-estado* 10)       ; segundos entre leituras
+
+;;; Monitores: a barra vai para a cabeça com esta resolução
+;;; (se nenhuma coincidir, para a primeira cabeça)
+(defparameter *cfg-barra-largura* 1920)
+(defparameter *cfg-barra-altura*  1080)
+
+;;; Gaps
+(defparameter *cfg-gap-interno* 10)
+(defparameter *cfg-gap-externo* 5)
+
+;;; Grupos (1.º renomeia o actual; 2.º em fundo; 3.º flutuante)
+(defparameter *cfg-grupos* '("1-alpha" "2-beta" "3-gama"))
+
+;;; Comportamento
+(defparameter *cfg-prefixo*     "C-z")
+(defparameter *cfg-foco-rato*   :click)        ; :click ou :sloppy
+(defparameter *cfg-timeout-msg* 7)
+(defparameter *cfg-borda-msg*   3)
+
+;;; Programas e ficheiros
+(defparameter *cfg-terminal*   "kitty")
+(defparameter *cfg-navegador*  "firefox")
+(defparameter *cfg-wallpaper*  "~/Pictures/Wallpapers/Desktop/Artwork/88.png")
+(defparameter *cfg-swank-porta* 4004)
+
+;;;; =====================================================================
+;;;; 1. INFRAESTRUTURA — registo de erros e ligação tardia
+;;;; =====================================================================
+
+(defvar *rc-log* (merge-pathnames ".stumpwm-rc.log" (user-homedir-pathname)))
+
+(defun rc-log (fmt &rest args)
+  (with-open-file (s *rc-log* :direction :output
+                              :if-exists :append :if-does-not-exist :create)
+    (apply #'format s fmt args)
+    (terpri s)))
+
+(defmacro rc-try (label &body body)
+  "Avalia BODY; um erro de avaliação vira linha de registo, não aborto."
+  `(handler-case (progn ,@body)
+     (error (c) (rc-log "~A: ~A" ,label c) nil)))
+
+(defun sym (pacote nome)
+  "Símbolo NOME de PACOTE, ou NIL. Evita `pacote:símbolo` para pacotes
+que só existem depois de um load (o leitor falharia antes do rc-try)."
+  (let ((p (find-package pacote)))
+    (and p (values (find-symbol nome p)))))
+
+;;;; =====================================================================
+;;;; 2. BÁSICO — shell, prefixo, fundo, wallpaper
+;;;; =====================================================================
+
+;; run-shell-command compõe sintaxe POSIX; o teu shell é Elvish.
+(setf *shell-program* "/bin/sh")
+
+(set-prefix-key (kbd *cfg-prefixo*))
+
+(run-shell-command
+ (format nil "xsetroot -solid '~a' -cursor_name left_ptr" *cfg-cor-fundo*))
+(run-shell-command (format nil "feh --bg-fill ~a" *cfg-wallpaper*))
+
+;;;; =====================================================================
+;;;; 3. MÓDULOS E FONTE
+;;;; =====================================================================
+
+;; Quicklisp (só necessário para ttf-fonts e swank)
+(rc-try "quicklisp"
+  (let ((setup (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))
+    (when (probe-file setup) (load setup))))
+
+(defun ql-carregar (sistema)
+  (let ((f (sym "QUICKLISP-CLIENT" "QUICKLOAD")))
+    (if f (funcall f sistema :silent t) (error "Quicklisp ausente"))))
+
+(rc-try "module-dir" (set-module-dir "/usr/share/stumpwm/contrib/"))
+
+(dolist (m '("swm-gaps" "swm-emacs" "app-menu"))
+  (rc-try (format nil "load-module ~A" m) (load-module m)))
+
+;; Fonte TTF. *ttf-ok* decide se a barra usa glifos Nerd Font.
+(defvar *ttf-ok* nil)
+
+(rc-try "ttf-fonts"
+  (ql-carregar "clx-truetype")
+  (load-module "ttf-fonts")
+  (funcall (sym "XFT" "CACHE-FONTS"))
+  (flet ((fonte (tam)
+           (make-instance (sym "XFT" "FONT")
+                          :family *cfg-fonte-familia*
+                          :subfamily *cfg-fonte-estilo*
+                          :size tam)))
+    (set-font (list (fonte *cfg-fonte-tamanho*)    ; ^f0 texto
+                    (fonte *cfg-fonte-icones*))))  ; ^f1 ícones
+  (setf *ttf-ok* t))
+
+(unless *ttf-ok*
+  (rc-try "fonte-core" (set-font *cfg-fonte-core*)))
+
+(defun icone (codigo &optional (texto ""))
+  "Glifo Nerd Font CODIGO na fonte de ícones; sem TTF, devolve TEXTO."
+  (if *ttf-ok* (format nil "^f1~c^f0" (code-char codigo)) texto))
+
+;;;; =====================================================================
+;;;; 4. CORES
+;;;; =====================================================================
+
+;; ^0 texto, ^1 fundo, ^2..^8 acentos
+(setf *colors* (append (list *cfg-cor-texto* *cfg-cor-fundo*) *cfg-acentos*))
+
+(defparameter *mode-line-bg-color* *cfg-barra-fundo*)
+(defparameter *mode-line-fg-color* *cfg-barra-texto*)
+(defparameter *msg-bg-color*       *cfg-cor-fundo*)
+(defparameter *msg-fg-color*       *cfg-cor-texto*)
+(defparameter *msg-border-color*   *cfg-cor-borda-msg*)
+
+;;;; =====================================================================
+;;;; 5. GERAL
+;;;; =====================================================================
+
+(setf *timeout-wait* *cfg-timeout-msg*)
+(setf *ignore-wm-inc-hints* t)
+(setf *window-format* "%m%n%s%20t")          ; trunca o nome a 20 letras
+(setf *mouse-focus-policy* *cfg-foco-rato*)
+(setf *message-window-gravity* :center)
+(setf *input-window-gravity* :center)
+
+(set-bg-color *msg-bg-color*)
+(set-fg-color *msg-fg-color*)
+(set-border-color *msg-border-color*)
+(set-msg-border-width *cfg-borda-msg*)
+(setf *message-window-padding* 6)
+
+;; Gaps (swm-gaps é carregado em 3; pacote ligado tardiamente)
+(rc-try "gaps"
+  (setf (symbol-value (sym "SWM-GAPS" "*INNER-GAPS-SIZE*")) *cfg-gap-interno*)
+  (setf (symbol-value (sym "SWM-GAPS" "*OUTER-GAPS-SIZE*")) *cfg-gap-externo*))
+
+(setf *startup-message* "^5    Stump Window Manager ^0has initialized!
+Press ^2Ctrl+z ? ^0for Help. ^5Never Stop Hacking!^n
+          Powered with ^02 Common Lisp ")
+
+;;;; =====================================================================
+;;;; 6. GRUPOS (idempotente: reavaliar o rc não duplica)
+;;;; =====================================================================
+
+(rc-try "grupos"
+  (destructuring-bind (base extra flut) *cfg-grupos*
+    (let ((scr (current-screen)))
+      (unless (find-group scr base)  (grename base))
+      (unless (find-group scr extra) (gnewbg extra))
+      (unless (find-group scr flut)  (gnewbg-float flut)))))
+
+;;;; =====================================================================
+;;;; 7. SWANK — REPL do StumpWM a partir do Emacs (SLIME)
+;;;; =====================================================================
+;;; Carregado sob demanda (primeiro s-s), para não custar tempo no arranque.
+;;; Requer Quicklisp: (ql:quickload :swank).
+
+(defvar *port-number* *cfg-swank-porta* "Porta do Swank")
+(defvar *swank-server-p* nil "Swank activo?")
+
+(defcommand start-swank () ()
+  "Start Swank if it is not already running"
+  (if *swank-server-p*
+      (message "Swank server is already active on Port^5 ~a^n" *port-number*)
+      (rc-try "start-swank"
+        (unless (find-package "SWANK") (ql-carregar "swank"))
+        (funcall (sym "SWANK" "CREATE-SERVER")
+                 :port *port-number*
+                 :style (symbol-value (sym "SWANK" "*COMMUNICATION-STYLE*"))
+                 :dont-close t)
+        (setf *swank-server-p* t)
+        (message "Swank server is now active on Port^5 ~a^n.
+Use^4 M-x slime-connect^n in Emacs.
+Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
+
+(defcommand stop-swank () ()
+  "Stop Swank"
+  (rc-try "stop-swank"
+    (funcall (sym "SWANK" "STOP-SERVER") *port-number*)
+    (setf *swank-server-p* nil)
+    (message "Stopping Swank Server! Closing Port^5 ~a^n." *port-number*)))
+
+(defcommand toggle-swank () ()
+  (if *swank-server-p*
+      (run-commands "stop-swank")
+      (run-commands "start-swank")))
+
+(define-key *top-map* (kbd "s-s") "toggle-swank")
+
+(add-screen-mode-line-formatter
+ #\S (lambda (ml)
+       (declare (ignore ml))
+       (if *swank-server-p*
+           (format nil "^3~a^n Port:^5 ~a^n " (icone #xF00C "Swank") *port-number*)
+           "")))
+
+;;;; =====================================================================
+;;;; 8. TECLAS
+;;;; =====================================================================
+
+;;; Navegação entre grupos
+(define-key *root-map* (kbd ".") "gnext")
+(define-key *root-map* (kbd ",") "gprev")
+(define-key *top-map* (kbd "s-Up") "gnext")
+(define-key *top-map* (kbd "s-Down") "gprev")
+
+;;; Janelas com Super + setas
+(define-key *top-map* (kbd "s-Right") "pull-hidden-next")
+(define-key *top-map* (kbd "s-Left") "pull-hidden-previous")
+
+;;; Enviar a janela para o grupo seguinte/anterior
+(define-key *root-map* (kbd "s-Right") "gnext-with-window")
+(define-key *root-map* (kbd "s-Left") "gprev-with-window")
+
+;;; Molduras (atravessa os dois monitores)
+(define-key *top-map* (kbd "s-SPC") "fnext")
+
+;;; Aplicações
+(defcommand firefox () ()
+  "Start Firefox or switch to it, if it is already running"
+  (run-or-raise *cfg-navegador* '(:class "firefox")))
+
+(define-key *root-map* (kbd "b") "firefox")
+
+(let ((cmd (format nil "exec ~a" *cfg-terminal*)))
+  (define-key *root-map* (kbd "Return") cmd)
+  (define-key *root-map* (kbd "c") cmd)
+  (define-key *root-map* (kbd "C-c") cmd))
+
+(define-key *root-map* (kbd "e") "swm-emacs")
+(define-key *root-map* (kbd "d") "show-menu")
+(define-key *root-map* (kbd "l") "exec slock")
+(define-key *root-map* (kbd "q") "delete-window")
+
+;;; Janelas flutuantes (Super, para não roubar C-f/C-t ao Emacs)
+(define-key *top-map* (kbd "s-f") "float-this")
+(define-key *top-map* (kbd "s-t") "unfloat-this")
+
+;;; Gaps (Super + u) e reinício a quente (Super + r)
+(define-key *top-map* (kbd "s-u") "toggle-gaps")
+(define-key *top-map* (kbd "s-r") "restart-hard")
+
+;;; Mantém o controlo do prefixo (liberta C-z de pull-hidden-other)
+(rc-try "prefixo"
+  (undefine-key *tile-group-root-map* (kbd "C-z"))
+  (define-key *root-map* (kbd "C-z") "abort"))
+
+;;; Captura de ecrã (maim)
+(defcommand stump-screenshot () ()
+  (run-shell-command "exec maim ~/Pictures/captura-$(date +%F-%H%M%S).png")
+  (message "Screenshot taken!"))
+
+(define-key *top-map* (kbd "Print") "stump-screenshot")
+
+;;; Som e brilho
+(define-key *top-map* (kbd "XF86AudioRaiseVolume")
+  "exec pactl set-sink-volume @DEFAULT_SINK@ +5%")
+(define-key *top-map* (kbd "XF86AudioLowerVolume")
+  "exec pactl set-sink-volume @DEFAULT_SINK@ -5%")
+(define-key *top-map* (kbd "XF86AudioMute")
+  "exec pactl set-sink-mute @DEFAULT_SINK@ toggle")
+(define-key *top-map* (kbd "XF86MonBrightnessUp")
+  "exec brightnessctl set 10%+")
+(define-key *top-map* (kbd "XF86MonBrightnessDown")
+  "exec brightnessctl set 10%-")
+
+;;; Menu de aplicações (ligação tardia a app-menu::*app-menu*)
+(rc-try "app-menu-data"
+  (let ((s (sym "APP-MENU" "*APP-MENU*")))
+    (when s
+      (setf (symbol-value s)
+            `(("Aplicações"
+               ("Terminal"  ,*cfg-terminal*)
+               ("Navegador" ,*cfg-navegador*)))))))
+
+;;;; =====================================================================
+;;;; 9. BARRA SUPERIOR — só no monitor *cfg-barra-largura* x *-altura*
+;;;; =====================================================================
+
+(setf *mode-line-timeout* 1)
+(setf *mode-line-border-width* 0)
+(setf *mode-line-pad-y* *cfg-barra-padding-y*)
+(setf *mode-line-pad-x* *cfg-barra-padding-x*)
+
+(setf *mode-line-background-color* *mode-line-bg-color*)
+(setf *mode-line-border-color*     *mode-line-bg-color*)
+(setf *mode-line-foreground-color* *mode-line-fg-color*)
+
+(setf *time-modeline-string*
+      (format nil "^2~a^n ~a" (icone #xF017 "") *cfg-hora-formato*))
+
+;;; Estado do sistema: leitura directa de /sys e /proc (sem processos)
+(defvar *estado-bateria* "")
+(defvar *estado-cpu* "")
+(defvar *estado-ram* "")
+(defvar *estado-rede* "")
+(defvar *cpu-anterior* nil "(total . ocioso) da leitura anterior")
+
+(defun ler-linha (caminho)
+  (with-open-file (s caminho :if-does-not-exist nil)
+    (and s (read-line s nil nil))))
+
+(defun palavras (str)
+  "Separa STR em palavras por espaços/tabs."
+  (let ((out '()) (ini nil))
+    (loop for i from 0 to (length str)
+          for c = (and (< i (length str)) (char str i))
+          do (if (and c (not (member c '(#\Space #\Tab))))
+                 (unless ini (setf ini i))
+                 (when ini (push (subseq str ini i) out) (setf ini nil))))
+    (nreverse out)))
+
+(defun fmt-bateria ()
+  (let* ((dir (format nil "/sys/class/power_supply/~a/" *cfg-bateria*))
+         (cap (parse-integer (or (ler-linha (concatenate 'string dir "capacity")) "")
+                             :junk-allowed t))
+         (st (or (ler-linha (concatenate 'string dir "status")) "")))
+    (if (null cap)
+        ""
+        (let* ((carregando (string= st "Charging"))
+               (ligada (or carregando (string= st "Full") (string= st "Not charging")))
+               (glifo (cond ((>= cap 88) #xF240) ((>= cap 63) #xF241)
+                            ((>= cap 38) #xF242) ((>= cap 13) #xF243)
+                            (t #xF244)))
+               (cor (cond (carregando "^3") ((<= cap 15) "^2") (t "^4"))))
+          (format nil "~a~a~a^n ~d% "
+                  cor
+                  (cond (carregando (concatenate 'string (icone #xF0E7 "") " "))
+                        (ligada (concatenate 'string (icone #xF1E6 "") " "))
+                        (t ""))
+                  (icone glifo "BAT ")
+                  cap)))))
+
+(defun fmt-cpu ()
+  (let* ((n (mapcar (lambda (x) (or (parse-integer x :junk-allowed t) 0))
+                    (cdr (palavras (or (ler-linha "/proc/stat") "")))))
+         (n (subseq n 0 (min 8 (length n)))))
+    (if (< (length n) 5)
+        ""
+        (let* ((total (reduce #'+ n))
+               (ocioso (+ (nth 3 n) (nth 4 n)))
+               (ant *cpu-anterior*)
+               (pct (if ant
+                        (let ((dt (- total (car ant))) (di (- ocioso (cdr ant))))
+                          (if (plusp dt) (round (* 100 (- dt di)) dt) 0))
+                        0)))
+          (setf *cpu-anterior* (cons total ocioso))
+          (format nil "^6~a^n ~d% " (icone #xF2DB "CPU ") pct)))))
+
+(defun meminfo-kb (chave)
+  (with-open-file (s "/proc/meminfo" :if-does-not-exist nil)
+    (when s
+      (loop for l = (read-line s nil nil)
+            while l
+            when (and (> (length l) (length chave))
+                      (string= chave l :end2 (length chave)))
+              return (parse-integer (second (palavras l)) :junk-allowed t)))))
+
+(defun fmt-ram ()
+  (let ((tot (meminfo-kb "MemTotal:")) (disp (meminfo-kb "MemAvailable:")))
+    (if (and tot disp (plusp tot))
+        (format nil "^7~a^n ~d% " (icone #xF233 "RAM ")
+                (round (* 100 (- tot disp)) tot))
+        "")))
+
+(defun fmt-rede ()
+  "Qualidade do Wi-Fi (aproximação: /proc/net/wireless, escala 0-70)."
+  (with-open-file (s "/proc/net/wireless" :if-does-not-exist nil)
+    (if (null s)
+        ""
+        (progn
+          (read-line s nil nil) (read-line s nil nil)
+          (let ((l (read-line s nil nil)))
+            (if (null l)
+                ""
+                (let ((q (parse-integer (or (third (palavras l)) "")
+                                        :junk-allowed t)))
+                  (if (and q (plusp q))
+                      (format nil "^3~a^n ~d% " (icone #xF1EB "WiFi ")
+                              (min 100 (round (* q 100) 70)))
+                      (format nil "^2~a^n " (icone #xF1EB "WiFi ")))))))))) 
+
+(defun atualizar-estado ()
+  (flet ((seguro (f) (handler-case (funcall f) (error () ""))))
+    (setf *estado-bateria* (seguro #'fmt-bateria)
+          *estado-cpu*     (seguro #'fmt-cpu)
+          *estado-ram*     (seguro #'fmt-ram)
+          *estado-rede*    (seguro #'fmt-rede))))
+
+(defvar *timer-estado* nil)
+(when *timer-estado* (ignore-errors (cancel-timer *timer-estado*)))
+(setf *timer-estado*
+      (run-with-timer 0 *cfg-intervalo-estado* #'atualizar-estado))
+
+(add-screen-mode-line-formatter #\B (lambda (ml) (declare (ignore ml)) *estado-bateria*))
+(add-screen-mode-line-formatter #\U (lambda (ml) (declare (ignore ml)) *estado-cpu*))
+(add-screen-mode-line-formatter #\R (lambda (ml) (declare (ignore ml)) *estado-ram*))
+(add-screen-mode-line-formatter #\N (lambda (ml) (declare (ignore ml)) *estado-rede*))
+
+;;; ---------------------------------------------------------------------
+(setf *screen-mode-line-format*
+      (list "^5[%g]^n "       ; grupos
+            "%W"              ; janelas desta cabeça
+            "^>"              ; alinhar à direita
+            "%S"              ; swank
+            "%N"              ; rede
+            "%U"              ; cpu
+            "%R"              ; ram
+            "%B"              ; bateria
+            "%d"))            ; hora
+
+(defun cabeca-da-barra (screen)
+  "A cabeça com a resolução do painel; na falta dela, a primeira."
+  (let ((cabs (screen-heads screen)))
+    (or (find-if (lambda (h)
+                   (and (= (head-width h) *cfg-barra-largura*)
+                        (= (head-height h) *cfg-barra-altura*)))
+                 cabs)
+        (first cabs))))
+
+(rc-try "barra"
+  (let* ((scr (current-screen))
+         (cab (cabeca-da-barra scr)))
+    (unless (head-mode-line cab)
+      (toggle-mode-line scr cab))))
+
+;;;; =====================================================================
+;;;; 10. OVERRIDES (do exemplo; cada bloco isolado)
+;;;; =====================================================================
+
+;; Cores normais sem escurecimento
+(rc-try "override-cores"
+  (when (and (fboundp 'lookup-color) (fboundp 'adjust-color)
+             (fboundp 'alloc-color))
+    (defun update-color-map (screen)
+      "Read *colors* and cache their pixel colors for use when rendering colored text."
+      (labels ((map-colors (amt)
+                 (loop for c in *colors*
+                       as color = (lookup-color screen c)
+                       do (adjust-color color amt)
+                       collect (alloc-color screen color))))
+        (setf (screen-color-map-normal screen)
+              (apply #'vector (map-colors 0.00)))))
+    (update-color-map (current-screen))))
+
+;; Mensagem de saída com cores
+(rc-try "override-quit"
+  (defcommand quit-confirm () ()
+    "Prompt the user to confirm quitting StumpWM."
+    (if (y-or-n-p (format nil "~@{~a~^~%~}"
+                          "You are about to quit the window manager to TTY."
+                          "Really ^2quit^n ^4StumpWM^n?"
+                          "^5Confirm?^n "))
+        (quit)
+        (xlib:unmap-window (screen-message-window (current-screen))))))
+
+;; Splits invertidos: S = lado a lado, s = um sobre o outro
+(rc-try "override-splits"
+  (defcommand (vsplit tile-group) (&optional (ratio "1/2")) (:string)
+    "Split the current frame into 2 side-by-side frames."
+    (split-frame-in-dir (current-group) :column (read-from-string ratio)))
+
+  (defcommand (hsplit tile-group) (&optional (ratio "1/2")) (:string)
+    "Split the current frame into 2 frames, one on top of the other."
+    (split-frame-in-dir (current-group) :row (read-from-string ratio)))
+
+  (undefine-key *tile-group-root-map* (kbd "S"))
+  (undefine-key *tile-group-root-map* (kbd "s"))
+  (define-key *root-map* (kbd "S") "vsplit")
+  (define-key *root-map* (kbd "s") "hsplit")
+
+  (defcommand (vsplit-equally tile-group) (amt)
+    ((:number "Enter the number of frames: "))
+    "Split current frame in n columns of equal size."
+    (split-frame-eql-parts (current-group) :column amt))
+
+  (defcommand (hsplit-equally tile-group) (amt)
+    ((:number "Enter the number of frames: "))
+    "Split current frame in n rows of equal size."
+    (split-frame-eql-parts (current-group) :row amt)))
+
+(rc-log "rc concluído sem aborto")
+;;; init.lisp ends here

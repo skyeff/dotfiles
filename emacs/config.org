@@ -121,8 +121,8 @@ desaparece, só deixa de ser o tema por omissão; podes trocar para ele
 a qualquer momento com ~consult-theme~, mais abaixo.
 
 #+begin_src emacs-lisp
-  (use-package doom-themes) ; instala primeiro, para o tema ficar disponível
-  (load-theme 'doom-dark+ t)
+  ;(use-package doom-themes) ; instala primeiro, para o tema ficar disponível
+  ;(load-theme 'doom-dark+ t)
 
 #+end_src
 
@@ -165,6 +165,31 @@ acima, que de outro modo se perderia a cada novo tema carregado.
 (advice-add 'load-theme :around #'meu/trocar-tema-com-seguranca)
 #+end_src
 
+Incluindo como atualização lambda themes
+
+#+begin_src emacs-lisp
+;; CORRECÇÃO: lambda-themes não está no MELPA/GNU/NonGNU (confirmado no
+;; próprio README do projecto) — um use-package normal falharia com
+;; "Package not found". A tentativa anterior usava `:straight', mas o
+;; straight.el nunca foi inicializado neste ficheiro (só usas
+;; package.el, secção 1); `:straight' sozinho, sem esse bootstrap,
+;; falha com "void-function straight-use-package". Em vez de trazer um
+;; segundo gestor de pacotes só para isto, `package-vc-install' —
+;; nativo desde o Emacs 29 — instala directamente a partir do
+;; repositório git, dentro do mesmo mecanismo que já usas para tudo o
+;; resto.
+(unless (package-installed-p 'lambda-themes)
+  (package-vc-install "https://github.com/Lambda-Emacs/lambda-themes"))
+
+(use-package lambda-themes
+  :ensure nil ; já instalado acima via package-vc-install, não via arquivo
+  :custom
+  (lambda-themes-set-italic-comments t)
+  (lambda-themes-set-italic-keywords t)
+  (lambda-themes-set-variable-pitch t)
+  :config
+  (load-theme 'doom-dark+ t)) ; "t" = NO-CONFIRM, evita o prompt interactivo no arranque
+#+end_src
 
 * 5. Barra de estado (mode-line) — doom-modeline
 
@@ -475,7 +500,7 @@ acrescenta-se a essa mesma lista sem exigir reconfiguração aqui).
   (corfu-auto-prefix 2))  ; só a partir de 2 caracteres, para não disparar a cada letra
 #+end_src
 
-* 15. Fonte — Hack Nerd Font, apenas em modo gráfico
+* 15. Fonte — Fira Code Nerd Font (código) + New York (prosa), apenas em modo gráfico
 
 Em modo texto (-nw), a fonte é sempre a do próprio emulador de
 terminal — o Emacs não tem controlo sobre isso, nem deve tentar (mesma
@@ -484,13 +509,27 @@ escolhe a fonte por si, e é aí que esta secção actua — repete-se a
 cada novo frame gráfico (ex.: ~emacsclient -c~), à semelhança da
 função de transparência.
 
+Duas faces distintas, dois papéis: ~default~ é a face monoespaçada
+usada em tudo o que é código (a face que a esmagadora maioria dos
+buffers usa); ~variable-pitch~ só entra quando um modo específico
+activa ~variable-pitch-mode~ (prosa em org-mode, por exemplo) — "New
+York", serifado, não tem função nenhuma sobre código, por isso não é a
+face ~default~.
+
 #+begin_src emacs-lisp
-(defvar meu/fonte-gui "FiraMono Nerd Font-13") ; ajusta o tamanho (após o "-") ao teu gosto
+(defvar meu/fonte-gui "Hack Nerd Font-13")     ; código — face default, monoespaçada
+(defvar meu/fonte-gui-prosa "New York Medium-14")   ; prosa — face variable-pitch, serifada
+;; NOTA: "New York" pura (sem sufixo de tamanho óptico) só tem
+;; Regular/Italic nos ficheiros que tens — negrito sairia sintético.
+;; "New York Medium" cobre Regular/Semibold/Bold/Heavy/Black, cada um
+;; com itálico verdadeiro — confirma o nome exacto com
+;; `fc-list | grep -i "new york"` antes de assumires que este está certo.
 
 (defun meu/aplicar-fonte-gui (&optional frame)
   (let ((frame (or frame (selected-frame))))
     (when (display-graphic-p frame)
-      (set-face-attribute 'default frame :font meu/fonte-gui))))
+      (set-face-attribute 'default frame :font meu/fonte-gui)
+      (set-face-attribute 'variable-pitch frame :font meu/fonte-gui-prosa))))
 (add-hook 'after-make-frame-functions #'meu/aplicar-fonte-gui)
 (meu/aplicar-fonte-gui)
 #+end_src
@@ -665,4 +704,9 @@ reais.
 #+begin_src emacs-lisp
 (use-package markdown-mode
   :mode ("\\.md\\'" . markdown-mode))
+#+end_src
+* 23. Expiração do Cache de Senhas em Ambiente sudo :Fixed:
+
+#+begin_src emacs-lisp
+(setenv "SHELL" "/bin/bash")
 #+end_src
