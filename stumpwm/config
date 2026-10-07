@@ -1,4 +1,15 @@
 ;;; -*- mode: lisp; -*-
+;;; init.lisp — StumpWM (Arch, dois monitores, Hack Nerd Font)
+;;;
+;;; Base: stumpwm-demo-config de James McCabe (GPLv3,
+;;; https://github.com/jamesmccabe/stumpwm-demo-config). Alterações: nomes
+;;; dos grupos, painel de parâmetros, secções, barra só no monitor 1080p,
+;;; ícones Nerd Font, estado lido directamente de /sys e /var, teclas do
+;;; hyprland.conf com Super substituído pelo prefixo C-z.
+;;;
+;;; NÃO TESTADO num StumpWM real. Erros de arranque vão para
+;;; ~/.stumpwm-rc.log em vez de abortarem o ficheiro: lê-o sempre.
+;;; Os overrides do exemplo estão inline na última secção.
 
 (in-package :stumpwm)
 
@@ -6,31 +17,46 @@
 ;;;; 0. PAINEL DE PARÂMETROS — tudo o que se ajusta com frequência
 ;;;; =====================================================================
 
-;;; Cores gerais (^0 texto, ^1 fundo; ^2..^8 acentos, usados na barra)
-(defparameter *cfg-cor-fundo*      "#14161d")
-(defparameter *cfg-cor-texto*      "#c8ccd6")
-(defparameter *cfg-cor-borda-msg*  "#f72f33")  ; borda das mensagens
-(defparameter *cfg-acentos*                    ; ^2 vermelho ^3 verde ^4 azul
-  '("#f72f33" "#689d6a" "#62bfef"              ; ^5 amarelo ^6 magenta
-    "#fabd2f" "#a644bf" "#cc4a0e" "#56b6c2"))  ; ^7 castanho ^8 ciano
+;;; Paleta: preto, branco e rosa; o cinza só serve a barra (^3).
+;;; ^0 texto, ^1 fundo, ^2 acento, ^3 cinza
+(defparameter *cfg-cor-fundo*     "#161616")   ; preto suave
+(defparameter *cfg-cor-texto*     "#ebebf0")   ; branco
+(defparameter *cfg-cor-acento*    "#f4a6c8")   ; rosa: uso parcimonioso
+(defparameter *cfg-cor-cinza*     "#8a8a8a")   ; só ícones e rótulos da barra
+(defparameter *cfg-cor-borda-msg* *cfg-cor-acento*)
 
 ;;; Cores da barra (por defeito herdam as gerais)
 (defparameter *cfg-barra-fundo* *cfg-cor-fundo*)
 (defparameter *cfg-barra-texto* *cfg-cor-texto*)
+(defparameter *cfg-separador*     "    ")       ; entre grupos e janelas (esq.)
+(defparameter *cfg-espaco-icone*  " ")          ; entre ícone/rótulo e valor
+(defparameter *cfg-espaco-seg*    "   ")        ; entre wifi, bateria (dir.)
+(defparameter *cfg-espaco-hora*   "  ")         ; entre bateria e data/hora
 
 ;;; Fonte (Hack Nerd Font via ttf-fonts; sem ela, cai na fonte core)
-(defparameter *cfg-fonte-familia*  "Hack Nerd Font")
+(defparameter *cfg-fonte-familias*             ; tenta por ordem; a Mono mete
+  '("Hack Nerd Font Mono" "Hack Nerd Font"     ; cada ícone numa só célula
+    "Hack Nerd Font Propo"))
+(defparameter *cfg-fonte-dirs* '(".local/share/fonts/")) ; relativos a ~
 (defparameter *cfg-fonte-estilo*   "Bold")     ; "Regular" ou "Bold"
-(defparameter *cfg-fonte-tamanho*  16)         ; texto
-(defparameter *cfg-fonte-icones*   17)         ; glifos da barra
+(defparameter *cfg-fonte-tamanho*  13)         ; texto
+(defparameter *cfg-fonte-icones*   17)         ; ícones (se cortarem: baixa isto
+                                               ; ou sobe *cfg-barra-padding-y*)         ; texto
 (defparameter *cfg-fonte-core*     "-xos4-terminus-medium-r-normal--20-*-*-*-*-*-*-*")
 
 ;;; Barra
-(defparameter *cfg-barra-padding-y* 6)         ; altura extra (px)
+(defparameter *cfg-barra-padding-y* 1)         ; altura extra (px)
 (defparameter *cfg-barra-padding-x* 8)
-(defparameter *cfg-hora-formato*   "%H:%M")    ; ex.: "%a %d/%m %H:%M"
-(defparameter *cfg-bateria*        "BAT0")     ; /sys/class/power_supply/<x>
+(defparameter *cfg-bateria*        nil)        ; nil = detecta (BAT0, BAT1...)
 (defparameter *cfg-intervalo-estado* 10)       ; segundos entre leituras
+
+;;; Menu de aplicações estilo Spotlight (C-z SPC)
+(defparameter *cfg-lancador-titulo*  "Pesquisar aplicações")
+(defparameter *cfg-lancador-largura* 0.5)      ; fracção da largura do ecrã
+(defparameter *cfg-lancador-linhas*  9)        ; linhas de resultados (+1 de aviso)
+(defparameter *cfg-dirs-apps*                  ; onde estão os .desktop
+  '("/usr/share/applications/" "~/.local/share/applications/"
+    "/var/lib/flatpak/exports/share/applications/"))
 
 ;;; Monitores: a barra vai para a cabeça com esta resolução
 ;;; (se nenhuma coincidir, para a primeira cabeça)
@@ -38,22 +64,30 @@
 (defparameter *cfg-barra-altura*  1080)
 
 ;;; Gaps
-(defparameter *cfg-gap-interno* 10)
-(defparameter *cfg-gap-externo* 5)
+(defparameter *cfg-gap-interno* 5)
+(defparameter *cfg-gap-externo* 1)
 
 ;;; Grupos (1.º renomeia o actual; 2.º em fundo; 3.º flutuante)
 (defparameter *cfg-grupos* '("1-alpha" "2-beta" "3-gama"))
+(defparameter *cfg-grupo-formato* "%t")        ; só o nome (%n nº, %s estado)
+
+;;; Redimensionar por teclado
+(defparameter *cfg-resize-passo* 20)           ; px por toque em molduras
+(defparameter *cfg-resize-flut* 40)            ; px por toque em flutuantes (tamanho e posição)
 
 ;;; Comportamento
 (defparameter *cfg-prefixo*     "C-z")
 (defparameter *cfg-foco-rato*   :click)        ; :click ou :sloppy
 (defparameter *cfg-timeout-msg* 7)
-(defparameter *cfg-borda-msg*   3)
+(defparameter *cfg-borda-msg*   2)
+(defparameter *cfg-borda-largura* 0)           ; borda das janelas em mosaico
+                                               ; (0 = nenhuma, também em fullscreen)
+(defparameter *cfg-rato-mod*    :super)        ; modificador do rato em flutuantes
 
 ;;; Programas e ficheiros
 (defparameter *cfg-terminal*   "kitty")
 (defparameter *cfg-navegador*  "firefox")
-(defparameter *cfg-wallpaper*  "~/Pictures/Wallpapers/Desktop/Artwork/88.png")
+(defparameter *cfg-wallpaper*  "~/Pictures/Wallpapers/Desktop/Default/4.png")
 (defparameter *cfg-swank-porta* 4004)
 
 ;;;; =====================================================================
@@ -68,10 +102,15 @@
     (apply #'format s fmt args)
     (terpri s)))
 
+(defvar *rc-erros* 0 "Nº de erros registados neste arranque")
+
 (defmacro rc-try (label &body body)
-  "Avalia BODY; um erro de avaliação vira linha de registo, não aborto."
+  "Avalia BODY; um erro de avaliação vira linha de registo, não aborto.
+Devolve o valor de BODY, ou NIL se houve erro."
   `(handler-case (progn ,@body)
-     (error (c) (rc-log "~A: ~A" ,label c) nil)))
+     (error (c) (incf *rc-erros*) (rc-log "~A: ~A" ,label c) nil)))
+
+(rc-log "=== arranque ===")
 
 (defun sym (pacote nome)
   "Símbolo NOME de PACOTE, ou NIL. Evita `pacote:símbolo` para pacotes
@@ -107,38 +146,72 @@ que só existem depois de um load (o leitor falharia antes do rc-try)."
 
 (rc-try "module-dir" (set-module-dir "/usr/share/stumpwm/contrib/"))
 
-(dolist (m '("swm-gaps" "swm-emacs" "app-menu"))
+(dolist (m '("swm-gaps" "swm-emacs"))
   (rc-try (format nil "load-module ~A" m) (load-module m)))
 
 ;; Fonte TTF. *ttf-ok* decide se a barra usa glifos Nerd Font.
 (defvar *ttf-ok* nil)
 
-(rc-try "ttf-fonts"
-  (ql-carregar "clx-truetype")
-  (load-module "ttf-fonts")
-  (funcall (sym "XFT" "CACHE-FONTS"))
-  (flet ((fonte (tam)
-           (make-instance (sym "XFT" "FONT")
-                          :family *cfg-fonte-familia*
-                          :subfamily *cfg-fonte-estilo*
-                          :size tam)))
-    (set-font (list (fonte *cfg-fonte-tamanho*)    ; ^f0 texto
-                    (fonte *cfg-fonte-icones*))))  ; ^f1 ícones
-  (setf *ttf-ok* t))
+(defun registar-dirs-fontes ()
+  "O clx-truetype só varre /usr/share/fonts e ~/.fonts; acrescenta os teus."
+  (let ((v (sym "XFT" "*FONT-DIRS*")))
+    (dolist (d *cfg-fonte-dirs*)
+      (pushnew (namestring (merge-pathnames d (user-homedir-pathname)))
+               (symbol-value v) :test #'string=))))
+
+(defun escolher-fonte ()
+  "Primeira (família . estilo) existente no cache; regista as famílias Hack."
+  (let* ((familias (funcall (sym "XFT" "GET-FONT-FAMILIES")))
+         (hack (remove-if-not (lambda (f) (search "hack" f :test #'char-equal))
+                              familias)))
+    (rc-log "famílias Hack no cache: ~s" hack)
+    (dolist (f *cfg-fonte-familias*)
+      (let ((fam (find f familias :test #'string-equal)))
+        (when fam
+          (let ((subs (funcall (sym "XFT" "GET-FONT-SUBFAMILIES") fam)))
+            (return (cons fam (or (find *cfg-fonte-estilo* subs :test #'string-equal)
+                                  (find "Regular" subs :test #'string-equal)
+                                  (first subs))))))))))
+
+(defun criar-fontes ()
+  (let ((esc (escolher-fonte)))
+    (unless esc
+      (error "nenhuma de ~s no cache (ver linha 'famílias Hack')"
+             *cfg-fonte-familias*))
+    (rc-log "fonte escolhida: ~a / ~a" (car esc) (cdr esc))
+    (flet ((fonte (tam)
+             (make-instance (sym "XFT" "FONT")
+                            :family (car esc) :subfamily (cdr esc) :size tam)))
+      ;; Mesma família (Mono: cada ícone cabe na sua célula), dois tamanhos:
+      ;; ^f0 texto, ^f1 ícones.
+      (set-font (list (fonte *cfg-fonte-tamanho*)
+                      (fonte *cfg-fonte-icones*))))))
+
+;; Cada etapa é registada à parte: o log diz exactamente onde falhou.
+(setf *ttf-ok*
+      (and (rc-try "ttf 1/4 quickload clx-truetype" (ql-carregar "clx-truetype") t)
+           (rc-try "ttf 2/4 load-module ttf-fonts"  (load-module "ttf-fonts") t)
+           (rc-try "ttf 3/4 xft:cache-fonts"
+             (registar-dirs-fontes)
+             (funcall (sym "XFT" "CACHE-FONTS"))
+             t)
+           (rc-try "ttf 4/4 set-font (família/estilo?)" (criar-fontes) t)))
 
 (unless *ttf-ok*
   (rc-try "fonte-core" (set-font *cfg-fonte-core*)))
 
 (defun icone (codigo &optional (texto ""))
-  "Glifo Nerd Font CODIGO na fonte de ícones; sem TTF, devolve TEXTO."
+  "Glifo Nerd Font CODIGO na fonte de ícones (^f1); sem TTF, devolve TEXTO."
   (if *ttf-ok* (format nil "^f1~c^f0" (code-char codigo)) texto))
 
 ;;;; =====================================================================
 ;;;; 4. CORES
 ;;;; =====================================================================
 
-;; ^0 texto, ^1 fundo, ^2..^8 acentos
-(setf *colors* (append (list *cfg-cor-texto* *cfg-cor-fundo*) *cfg-acentos*))
+;; ^0 texto, ^1 fundo, ^2 acento, ^3 cinza; ^4..^9 repetem o texto
+(setf *colors* (append (list *cfg-cor-texto* *cfg-cor-fundo*
+                             *cfg-cor-acento* *cfg-cor-cinza*)
+                       (make-list 6 :initial-element *cfg-cor-texto*)))
 
 (defparameter *mode-line-bg-color* *cfg-barra-fundo*)
 (defparameter *mode-line-fg-color* *cfg-barra-texto*)
@@ -154,6 +227,8 @@ que só existem depois de um load (o leitor falharia antes do rc-try)."
 (setf *ignore-wm-inc-hints* t)
 (setf *window-format* "%m%n%s%20t")          ; trunca o nome a 20 letras
 (setf *mouse-focus-policy* *cfg-foco-rato*)
+(setf *group-format* *cfg-grupo-formato*)
+(setf *resize-increment* *cfg-resize-passo*)
 (setf *message-window-gravity* :center)
 (setf *input-window-gravity* :center)
 
@@ -168,9 +243,25 @@ que só existem depois de um load (o leitor falharia antes do rc-try)."
   (setf (symbol-value (sym "SWM-GAPS" "*INNER-GAPS-SIZE*")) *cfg-gap-interno*)
   (setf (symbol-value (sym "SWM-GAPS" "*OUTER-GAPS-SIZE*")) *cfg-gap-externo*))
 
-(setf *startup-message* "^5    Stump Window Manager ^0has initialized!
-Press ^2Ctrl+z ? ^0for Help. ^5Never Stop Hacking!^n
-          Powered with ^02 Common Lisp ")
+(setf *startup-message* "^2StumpWM^n pronto   —   ^2C-z SPC^n aplicações   ^2C-z ?^n ajuda   ^2C-z x^n comandos")
+
+;; Bordas: nenhuma em mosaico (nem em fullscreen); flutuantes pretas.
+;; Com largura 0 o fullscreen não tem onde mostrar borda; com largura > 0
+;; a janela focada ganha borda rosa, fullscreen incluído.
+(rc-try "bordas"
+  (setf *window-border-style* :tight
+        *normal-border-width*    *cfg-borda-largura*
+        *maxsize-border-width*   *cfg-borda-largura*
+        *transient-border-width* *cfg-borda-largura*)
+  (set-focus-color *cfg-cor-acento*)
+  (set-unfocus-color *cfg-cor-fundo*)
+  (set-float-focus-color *cfg-cor-fundo*)
+  (set-float-unfocus-color *cfg-cor-fundo*)
+  (set-win-bg-color *cfg-cor-fundo*))
+
+;; Rato em janelas flutuantes: Mod+botão 1 move, Mod+botão 3 redimensiona
+(rc-try "rato-flutuantes"
+  (setf *float-window-modifier* *cfg-rato-mod*))
 
 ;;;; =====================================================================
 ;;;; 6. GRUPOS (idempotente: reavaliar o rc não duplica)
@@ -186,7 +277,7 @@ Press ^2Ctrl+z ? ^0for Help. ^5Never Stop Hacking!^n
 ;;;; =====================================================================
 ;;;; 7. SWANK — REPL do StumpWM a partir do Emacs (SLIME)
 ;;;; =====================================================================
-;;; Carregado sob demanda (primeiro s-s), para não custar tempo no arranque.
+;;; Carregado sob demanda (primeiro C-z C-e), para não custar tempo no arranque.
 ;;; Requer Quicklisp: (ql:quickload :swank).
 
 (defvar *port-number* *cfg-swank-porta* "Porta do Swank")
@@ -219,74 +310,241 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
       (run-commands "stop-swank")
       (run-commands "start-swank")))
 
-(define-key *top-map* (kbd "s-s") "toggle-swank")
 
-(add-screen-mode-line-formatter
- #\S (lambda (ml)
-       (declare (ignore ml))
-       (if *swank-server-p*
-           (format nil "^3~a^n Port:^5 ~a^n " (icone #xF00C "Swank") *port-number*)
-           "")))
+(defun seg-swank ()
+  (if *swank-server-p*
+      (format nil "^2~a^n~a~a" (icone #xF00C "Swank") *cfg-espaco-icone* *port-number*)
+      ""))
 
 ;;;; =====================================================================
-;;;; 8. TECLAS
+;;;; 8. TECLAS — mnemónicas do Emacs sob o prefixo C-z
 ;;;; =====================================================================
 
-;;; Navegação entre grupos
-(define-key *root-map* (kbd ".") "gnext")
-(define-key *root-map* (kbd ",") "gprev")
-(define-key *top-map* (kbd "s-Up") "gnext")
-(define-key *top-map* (kbd "s-Down") "gprev")
+(defun ligar (tecla comando &optional (mapa *root-map*))
+  "Liga TECLA a COMANDO em MAPA e liberta a tecla nos mapas por-grupo
+(que, no StumpWM, têm precedência sobre *root-map*)."
+  (let ((k (kbd tecla)))
+    (dolist (nome '("*TILE-GROUP-ROOT-MAP*" "*FLOAT-GROUP-ROOT-MAP*"))
+      (let ((v (sym "STUMPWM" nome)))
+        (when (and v (boundp v))
+          (ignore-errors (undefine-key (symbol-value v) k)))))
+    (define-key mapa k comando)))
 
-;;; Janelas com Super + setas
-(define-key *top-map* (kbd "s-Right") "pull-hidden-next")
-(define-key *top-map* (kbd "s-Left") "pull-hidden-previous")
-
-;;; Enviar a janela para o grupo seguinte/anterior
-(define-key *root-map* (kbd "s-Right") "gnext-with-window")
-(define-key *root-map* (kbd "s-Left") "gprev-with-window")
-
-;;; Molduras (atravessa os dois monitores)
-(define-key *top-map* (kbd "s-SPC") "fnext")
+(defun mapa-de (&rest pares)
+  "Novo keymap a partir de pares TECLA COMANDO."
+  (let ((m (make-sparse-keymap)))
+    (loop for (tecla cmd) on pares by #'cddr
+          do (define-key m (kbd tecla) cmd))
+    m))
 
 ;;; Aplicações
 (defcommand firefox () ()
   "Start Firefox or switch to it, if it is already running"
   (run-or-raise *cfg-navegador* '(:class "firefox")))
 
-(define-key *root-map* (kbd "b") "firefox")
+(let ((term (format nil "exec ~a" *cfg-terminal*)))
+  (ligar "RET" term)
+  (ligar "c" term))
+(ligar "w" "firefox")
+(ligar "e" "swm-emacs")
+(ligar "SPC" "lancador")              ; menu de aplicações (definido mais abaixo)
+(ligar "l" "exec slock")
 
-(let ((cmd (format nil "exec ~a" *cfg-terminal*)))
-  (define-key *root-map* (kbd "Return") cmd)
-  (define-key *root-map* (kbd "c") cmd)
-  (define-key *root-map* (kbd "C-c") cmd))
+;;; Comandos (o M-x do Emacs)
+(ligar "x" "colon")
 
-(define-key *root-map* (kbd "e") "swm-emacs")
-(define-key *root-map* (kbd "d") "show-menu")
-(define-key *root-map* (kbd "l") "exec slock")
-(define-key *root-map* (kbd "q") "delete-window")
+;;; Sessão: C-z q ...  (sub-prefixo, para não haver toques acidentais)
+(ligar "q" (mapa-de "q" "quit-confirm"
+                    "r" "restart-hard"
+                    "l" "loadrc"
+                    "e" "toggle-swank"))
+(ligar "C-g" "abort")
+(ligar "C-z" "send-escape")
 
-;;; Janelas flutuantes (Super, para não roubar C-f/C-t ao Emacs)
-(define-key *top-map* (kbd "s-f") "float-this")
-(define-key *top-map* (kbd "s-t") "unfloat-this")
+;;; Molduras (os "windows" do Emacs)
+(ligar "0" "remove")
+(ligar "1" "only")
+(ligar "2" "hsplit")
+(ligar "3" "vsplit")
+(ligar "+" "balance-frames")
+(ligar "o" "fnext")
+(ligar "C-f" "move-focus right")
+(ligar "C-b" "move-focus left")
+(ligar "C-n" "move-focus down")
+(ligar "C-p" "move-focus up")
+(ligar "M-f" "exchange-direction right")
+(ligar "M-b" "exchange-direction left")
+(ligar "M-n" "exchange-direction down")
+(ligar "M-p" "exchange-direction up")
 
-;;; Gaps (Super + u) e reinício a quente (Super + r)
-(define-key *top-map* (kbd "s-u") "toggle-gaps")
-(define-key *top-map* (kbd "s-r") "restart-hard")
+;;; Janelas (os "buffers")
+(ligar "b" "pull-from-windowlist")    ; como C-x b: mostra AQUI a janela escolhida
+(ligar "k" "delete-window")
+(ligar "K" "kill-window")
+(ligar "Right" "next")
+(ligar "Left" "prev")
+(ligar "TAB" "other")
+(ligar "F" "fullscreen")
 
-;;; Mantém o controlo do prefixo (liberta C-z de pull-hidden-other)
-(rc-try "prefixo"
-  (undefine-key *tile-group-root-map* (kbd "C-z"))
-  (define-key *root-map* (kbd "C-z") "abort"))
+;;; Segundo monitor: envia a janela actual para a moldura da cabeça seguinte
+;;; (circular) e segue-a. Complementa o foco (C-z o) e a troca (C-z M-f).
+(defcommand janela-outro-monitor () ()
+  "Move a janela actual para a primeira moldura da cabeça seguinte."
+  (let* ((win (current-window))
+         (cabecas (screen-heads (current-screen)))
+         (atual (current-head))
+         (prox (or (second (member atual cabecas)) (first cabecas)))
+         (alvo (first (stumpwm::head-frames (current-group) prox))))
+    (if (and win alvo (not (eq prox atual)))
+        (stumpwm::pull-window win alvo)
+        (message "Sem outra cabeça ou sem janela"))))
 
-;;; Captura de ecrã (maim)
+(ligar "M-o" "janela-outro-monitor")
+
+;;; Flutuantes: C-z f alterna. Em mosaico, a janela flutua onde está; no
+;;; grupo flutuante (3.º), devolve-a ao 1.º grupo, em mosaico.
+(defun janela-flutuante-p (&optional (win (current-window)))
+  "Verdadeiro se WIN é uma float-window (grupo flutuante ou float-this)."
+  (and win (typep win 'float-window)))
+
+(defcommand alternar-flutuante () ()
+  "Alterna a janela actual entre mosaico e flutuante."
+  (cond ((null (current-window)) (message "Sem janela"))
+        ((typep (current-group) 'float-group)
+         (run-commands (format nil "gmove-and-follow ~a" (first *cfg-grupos*))))
+        ((janela-flutuante-p) (unfloat-this))
+        (t (float-this))))
+
+(ligar "f" "alternar-flutuante")
+
+;;; Grupos: C-z M-1/2/3 vai ao grupo; C-z t ... gere-os
+;;;   t m N  manda a janela para o grupo N     t M N  manda e segue
+;;;   t o/O  seguinte/anterior   t TAB  último   t n  novo   t r  renomear
+;;;   t k  matar   t l  lista
+(let ((tg (make-sparse-keymap))
+      (mov (make-sparse-keymap))
+      (seg (make-sparse-keymap)))
+  (loop for g in *cfg-grupos*
+        for n from 1
+        for k = (format nil "~d" n)
+        do (define-key mov (kbd k) (format nil "gmove ~a" g))
+           (define-key seg (kbd k) (format nil "gmove-and-follow ~a" g))
+           (ligar (format nil "M-~d" n) (format nil "gselect ~a" g)))
+  (define-key tg (kbd "m") mov)
+  (define-key tg (kbd "M") seg)
+  (define-key tg (kbd "o") "gnext")
+  (define-key tg (kbd "O") "gprev")
+  (define-key tg (kbd "TAB") "gother")
+  (define-key tg (kbd "n") "gnew")
+  (define-key tg (kbd "k") "gkill")
+  (define-key tg (kbd "r") "grename")
+  (define-key tg (kbd "l") "groups")
+  (ligar "t" tg))
+
+;;; Ajustar janela: C-z r
+;;;   mosaico    iresize (setas ou h j k l; RET/ESC sai)
+;;;   flutuante  modo próprio:  h j k l / setas  tamanho
+;;;                             H J K L / S-setas  posição
+;;;                             c  centrar   RET ESC q  sair
+;;;   Rato (flutuantes): Mod+botão 1 move, Mod+botão 3 redimensiona
+(ligar "r" "modo-resize")
+
+(rc-try "resize-teclas"
+  (loop for (k c) in '(("h" "left") ("j" "down") ("k" "up") ("l" "right")
+                       ("C-b" "left") ("C-n" "down") ("C-p" "up") ("C-f" "right"))
+        do (define-key *resize-map* (kbd k) (format nil "resize-direction ~a" c))))
+
+(defvar *mapa-flut* (make-sparse-keymap)
+  "Modo de ajuste (tamanho e posição) das janelas flutuantes.")
+
+(defun redimensionar-flutuante (dw dh)
+  (let ((win (current-window)))
+    (if (janela-flutuante-p win)
+        (float-window-move-resize win
+                                  :width  (max 50 (+ (window-width win) dw))
+                                  :height (max 50 (+ (window-height win) dh)))
+        (message "Só em janelas flutuantes (C-z f)"))))
+
+(defun mover-flutuante (dx dy)
+  (let ((win (current-window)))
+    (if (janela-flutuante-p win)
+        (let ((p (window-parent win)))
+          (float-window-move-resize win
+                                    :x (+ (xlib:drawable-x p) dx)
+                                    :y (+ (xlib:drawable-y p) dy)))
+        (message "Só em janelas flutuantes (C-z f)"))))
+
+(defcommand resize-float (dw dh) ((:number "Δ largura: ") (:number "Δ altura: "))
+  "Redimensiona a janela flutuante actual por DW x DH pixels."
+  (redimensionar-flutuante dw dh))
+
+(defcommand move-float (dx dy) ((:number "Δx: ") (:number "Δy: "))
+  "Move a janela flutuante actual por DX x DY pixels."
+  (mover-flutuante dx dy))
+
+(defcommand centrar-flutuante () ()
+  "Centra a janela flutuante actual na cabeça actual."
+  (let ((win (current-window)))
+    (if (janela-flutuante-p win)
+        (let ((h (current-head)))
+          (float-window-move-resize
+           win
+           :x (+ (head-x h) (max 0 (round (- (head-width h) (window-width win)) 2)))
+           :y (+ (head-y h) (max 0 (round (- (head-height h) (window-height win)) 2)))))
+        (message "Só em janelas flutuantes (C-z f)"))))
+
+(defcommand sair-modo () ()
+  "Sai do modo de ajuste de janelas flutuantes."
+  (pop-top-map)
+  (message "modo de ajuste: fim"))
+
+(defcommand modo-resize () ()
+  "Ajustar janela: iresize em mosaico; modo próprio em janelas flutuantes."
+  (if (janela-flutuante-p)
+      (progn
+        (push-top-map *mapa-flut*)
+        (message "^2ajustar^n  h j k l tamanho   H J K L posição   c centrar   RET sai"))
+      (run-commands "iresize")))
+
+(let ((p *cfg-resize-flut*))
+  (loop for (tecla dw dh) in `(("h" ,(- p) 0) ("Left"  ,(- p) 0)
+                               ("l" ,p 0)     ("Right" ,p 0)
+                               ("j" 0 ,p)     ("Down"  0 ,p)
+                               ("k" 0 ,(- p)) ("Up"    0 ,(- p)))
+        do (define-key *mapa-flut* (kbd tecla)
+             (format nil "resize-float ~d ~d" dw dh)))
+  (loop for (tecla dx dy) in `(("H" ,(- p) 0) ("S-Left"  ,(- p) 0)
+                               ("L" ,p 0)     ("S-Right" ,p 0)
+                               ("J" 0 ,p)     ("S-Down"  0 ,p)
+                               ("K" 0 ,(- p)) ("S-Up"    0 ,(- p)))
+        do (define-key *mapa-flut* (kbd tecla)
+             (format nil "move-float ~d ~d" dx dy))))
+(define-key *mapa-flut* (kbd "c") "centrar-flutuante")
+(dolist (k '("ESC" "RET" "C-g" "q"))
+  (define-key *mapa-flut* (kbd k) "sair-modo"))
+
+;;; Visual: C-z v ...  (barra, gaps, mensagens, notificações, info)
+(ligar "v" (mapa-de "g" "toggle-gaps"
+                    "b" "mode-line"
+                    "m" "lastmsg"
+                    "i" "info"
+                    "n" "exec dunstctl history-pop"
+                    "N" "exec dunstctl set-paused toggle"))
+
+;;; Capturas
 (defcommand stump-screenshot () ()
   (run-shell-command "exec maim ~/Pictures/captura-$(date +%F-%H%M%S).png")
-  (message "Screenshot taken!"))
+  (message "Captura gravada"))
 
+(defcommand stump-screenshot-regiao () ()
+  (run-shell-command "exec maim -s ~/Pictures/captura-$(date +%F-%H%M%S).png")
+  (message "Selecciona a região"))
+
+(ligar "s" "stump-screenshot")
+(ligar "S" "stump-screenshot-regiao")
 (define-key *top-map* (kbd "Print") "stump-screenshot")
 
-;;; Som e brilho
+;;; Som e brilho (sem prefixo)
 (define-key *top-map* (kbd "XF86AudioRaiseVolume")
   "exec pactl set-sink-volume @DEFAULT_SINK@ +5%")
 (define-key *top-map* (kbd "XF86AudioLowerVolume")
@@ -298,14 +556,119 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
 (define-key *top-map* (kbd "XF86MonBrightnessDown")
   "exec brightnessctl set 10%-")
 
-;;; Menu de aplicações (ligação tardia a app-menu::*app-menu*)
-(rc-try "app-menu-data"
-  (let ((s (sym "APP-MENU" "*APP-MENU*")))
-    (when s
-      (setf (symbol-value s)
-            `(("Aplicações"
-               ("Terminal"  ,*cfg-terminal*)
-               ("Navegador" ,*cfg-navegador*)))))))
+;;; ---------------------------------------------------------------------
+;;; Lançador estilo Spotlight: barra larga, a escrever logo, resultados
+;;; filtrados em directo (todas as palavras, sem distinguir maiúsculas).
+;;; Enter lança o PRIMEIRO resultado; sem resultados, corre o texto como comando.
+;;; Fonte: ficheiros .desktop (Name + Exec).
+
+(defun expandir-til (caminho)
+  (if (and (> (length caminho) 1) (string= "~/" caminho :end2 2))
+      (concatenate 'string (namestring (user-homedir-pathname)) (subseq caminho 2))
+      caminho))
+
+(defun limpar-exec (exec)
+  "Remove os códigos de campo do .desktop (%f %U ...); %% passa a %."
+  (with-output-to-string (o)
+    (loop with i = 0
+          while (< i (length exec))
+          do (let ((c (char exec i)))
+               (cond ((and (char= c #\%) (< (1+ i) (length exec)))
+                      (when (char= (char exec (1+ i)) #\%) (write-char #\% o))
+                      (incf i 2))
+                     (t (write-char c o) (incf i)))))))
+
+(defun ler-desktop (caminho)
+  "(NOME . COMANDO) de um .desktop de aplicação visível; NIL caso contrário."
+  (let ((nome nil) (exec nil) (terminal nil) (esconder nil) (tipo nil) (dentro nil))
+    (handler-case
+        (with-open-file (s caminho :external-format '(:utf-8 :replacement #\?)
+                                   :if-does-not-exist nil)
+          (when s
+            (loop for linha = (read-line s nil nil)
+                  while linha
+                  do (let ((l (string-trim '(#\Space #\Tab #\Return) linha)))
+                       (cond ((string= l "[Desktop Entry]") (setf dentro t))
+                             ((and (plusp (length l)) (char= (char l 0) #\[))
+                              (when dentro (return)))
+                             (dentro
+                              (let ((p (position #\= l)))
+                                (when p
+                                  (let ((k (subseq l 0 p)) (v (subseq l (1+ p))))
+                                    (cond ((string= k "Name") (unless nome (setf nome v)))
+                                          ((string= k "Exec") (unless exec (setf exec v)))
+                                          ((string= k "Type") (setf tipo v))
+                                          ((string= k "Terminal")
+                                           (setf terminal (string-equal v "true")))
+                                          ((or (string= k "NoDisplay") (string= k "Hidden"))
+                                           (when (string-equal v "true")
+                                             (setf esconder t)))))))))))))
+      (error () (return-from ler-desktop nil)))
+    (when (and nome exec (not esconder) (or (null tipo) (string= tipo "Application")))
+      (let ((cmd (string-trim " " (limpar-exec exec))))
+        (cons nome (if terminal (format nil "~a -e ~a" *cfg-terminal* cmd) cmd))))))
+
+(defun lista-aplicacoes ()
+  "Alist (NOME . COMANDO), sem repetidos, por ordem alfabética."
+  (let ((vistos (make-hash-table :test 'equalp)) (res '()))
+    (dolist (d *cfg-dirs-apps*)
+      (dolist (f (ignore-errors
+                  (directory (concatenate 'string (expandir-til d) "*.desktop")
+                             :resolve-symlinks nil)))
+        (let ((e (ler-desktop f)))
+          (when (and e (not (gethash (car e) vistos)))
+            (setf (gethash (car e) vistos) t)
+            (push e res)))))
+    (sort res #'string-lessp :key #'car)))
+
+(defun refinar-apps (str candidatos)
+  "Filtro do lançador: todas as palavras de STR contidas no nome (sem
+distinguir maiúsculas); os que começam por STR vêm primeiro."
+  (let* ((q (string-downcase (string-trim " " str)))
+         (ps (palavras q))
+         (nome (lambda (c) (string-downcase (if (listp c) (car c) c))))
+         (acertos (remove-if-not
+                   (lambda (c) (let ((n (funcall nome c)))
+                                 (every (lambda (p) (search p n)) ps)))
+                   candidatos)))
+    (flet ((inicio (c) (let ((n (funcall nome c)))
+                         (and (<= (length q) (length n))
+                              (string= q n :end2 (length q))))))
+      (stable-sort (copy-list acertos)
+                   (lambda (a b) (and (inicio a) (not (inicio b))))))))
+
+(defun lancar-entrada (entrada apps)
+  (let* ((q (string-trim " " entrada))
+         (nomes (mapcar #'car apps))
+         (nome (or (find q nomes :test #'string-equal)
+                   (first (refinar-apps q nomes))))
+         (cmd (if nome (cdr (assoc nome apps :test #'string=)) q)))
+    (message "Lançar: ~a" (or nome q))
+    (run-shell-command (concatenate 'string "exec " cmd))))
+
+(defun prompt-lancador ()
+  "Duas linhas: o título, preenchido até à largura pretendida (é ele que alarga
+a janela de entrada), e a linha onde se escreve."
+  (let* ((font (screen-font (current-screen)))
+         (larg (round (* *cfg-lancador-largura* (head-width (current-head)))))
+         (um (max 1 (text-line-width font "M" :translate #'translate-id)))
+         (cols (max 20 (ceiling larg um)))
+         (lupa (if *ttf-ok* (string (code-char #xF002)) ">")))
+    (format nil "~va~%  ~a  " cols (format nil "  ~a" *cfg-lancador-titulo*) lupa)))
+
+(defcommand lancador () ()
+  "Pesquisa de aplicações estilo Spotlight (barra larga, filtro em directo)."
+  (let* ((apps (lista-aplicacoes))
+         (entrada
+           (let ((*input-refine-candidates-fn* #'refinar-apps)
+                 (*input-completion-show-empty* t)
+                 (*maximum-completions* *cfg-lancador-linhas*)
+                 (*input-window-gravity* :center)
+                 (*message-window-y-padding* 10))
+             (read-one-line (current-screen) (prompt-lancador)
+                            :completions (mapcar #'car apps)))))
+    (when (and entrada (string/= (string-trim " " entrada) ""))
+      (lancar-entrada entrada apps))))
 
 ;;;; =====================================================================
 ;;;; 9. BARRA SUPERIOR — só no monitor *cfg-barra-largura* x *-altura*
@@ -320,15 +683,10 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
 (setf *mode-line-border-color*     *mode-line-bg-color*)
 (setf *mode-line-foreground-color* *mode-line-fg-color*)
 
-(setf *time-modeline-string*
-      (format nil "^2~a^n ~a" (icone #xF017 "") *cfg-hora-formato*))
-
-;;; Estado do sistema: leitura directa de /sys e /proc (sem processos)
+;;; Lado direito: wifi  BAT  data/hora. Leitura directa de /sys e /proc.
+;;; Cores: ^3 cinza (ícones e rótulos), branco (valores), ^2 rosa (alerta).
 (defvar *estado-bateria* "")
-(defvar *estado-cpu* "")
-(defvar *estado-ram* "")
 (defvar *estado-rede* "")
-(defvar *cpu-anterior* nil "(total . ocioso) da leitura anterior")
 
 (defun ler-linha (caminho)
   (with-open-file (s caminho :if-does-not-exist nil)
@@ -344,61 +702,33 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
                  (when ini (push (subseq str ini i) out) (setf ini nil))))
     (nreverse out)))
 
+(defun achar-bateria ()
+  "Nome da bateria em /sys/class/power_supply: a configurada ou a detectada."
+  (find-if (lambda (n)
+             (and n (probe-file
+                     (format nil "/sys/class/power_supply/~a/capacity" n))))
+           (cons *cfg-bateria* '("BAT0" "BAT1" "BATT" "CMB0" "CMB1"))))
+
 (defun fmt-bateria ()
-  (let* ((dir (format nil "/sys/class/power_supply/~a/" *cfg-bateria*))
-         (cap (parse-integer (or (ler-linha (concatenate 'string dir "capacity")) "")
-                             :junk-allowed t))
-         (st (or (ler-linha (concatenate 'string dir "status")) "")))
-    (if (null cap)
+  "BAT 88%: rótulo cinza, valor branco. Rosa: rótulo a carregar, valor <= 15%."
+  (let ((nome (achar-bateria)))
+    (if (null nome)
         ""
-        (let* ((carregando (string= st "Charging"))
-               (ligada (or carregando (string= st "Full") (string= st "Not charging")))
-               (glifo (cond ((>= cap 88) #xF240) ((>= cap 63) #xF241)
-                            ((>= cap 38) #xF242) ((>= cap 13) #xF243)
-                            (t #xF244)))
-               (cor (cond (carregando "^3") ((<= cap 15) "^2") (t "^4"))))
-          (format nil "~a~a~a^n ~d% "
-                  cor
-                  (cond (carregando (concatenate 'string (icone #xF0E7 "") " "))
-                        (ligada (concatenate 'string (icone #xF1E6 "") " "))
-                        (t ""))
-                  (icone glifo "BAT ")
-                  cap)))))
-
-(defun fmt-cpu ()
-  (let* ((n (mapcar (lambda (x) (or (parse-integer x :junk-allowed t) 0))
-                    (cdr (palavras (or (ler-linha "/proc/stat") "")))))
-         (n (subseq n 0 (min 8 (length n)))))
-    (if (< (length n) 5)
-        ""
-        (let* ((total (reduce #'+ n))
-               (ocioso (+ (nth 3 n) (nth 4 n)))
-               (ant *cpu-anterior*)
-               (pct (if ant
-                        (let ((dt (- total (car ant))) (di (- ocioso (cdr ant))))
-                          (if (plusp dt) (round (* 100 (- dt di)) dt) 0))
-                        0)))
-          (setf *cpu-anterior* (cons total ocioso))
-          (format nil "^6~a^n ~d% " (icone #xF2DB "CPU ") pct)))))
-
-(defun meminfo-kb (chave)
-  (with-open-file (s "/proc/meminfo" :if-does-not-exist nil)
-    (when s
-      (loop for l = (read-line s nil nil)
-            while l
-            when (and (> (length l) (length chave))
-                      (string= chave l :end2 (length chave)))
-              return (parse-integer (second (palavras l)) :junk-allowed t)))))
-
-(defun fmt-ram ()
-  (let ((tot (meminfo-kb "MemTotal:")) (disp (meminfo-kb "MemAvailable:")))
-    (if (and tot disp (plusp tot))
-        (format nil "^7~a^n ~d% " (icone #xF233 "RAM ")
-                (round (* 100 (- tot disp)) tot))
-        "")))
+        (let* ((dir (format nil "/sys/class/power_supply/~a/" nome))
+               (cap (parse-integer
+                     (or (ler-linha (concatenate 'string dir "capacity")) "")
+                     :junk-allowed t))
+               (st (or (ler-linha (concatenate 'string dir "status")) "")))
+          (if (null cap)
+              ""
+              (format nil "~aBAT^n~a~a~d%^n"
+                      (if (string= st "Charging") "^2" "^3")
+                      *cfg-espaco-icone*
+                      (if (<= cap 15) "^2" "")
+                      cap))))))
 
 (defun fmt-rede ()
-  "Qualidade do Wi-Fi (aproximação: /proc/net/wireless, escala 0-70)."
+  "Ícone cinza e qualidade do Wi-Fi em branco (/proc/net/wireless, escala 0-70)."
   (with-open-file (s "/proc/net/wireless" :if-does-not-exist nil)
     (if (null s)
         ""
@@ -410,38 +740,64 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
                 (let ((q (parse-integer (or (third (palavras l)) "")
                                         :junk-allowed t)))
                   (if (and q (plusp q))
-                      (format nil "^3~a^n ~d% " (icone #xF1EB "WiFi ")
-                              (min 100 (round (* q 100) 70)))
-                      (format nil "^2~a^n " (icone #xF1EB "WiFi ")))))))))) 
+                      (format nil "^3~a^n~a~d%" (icone #xF1EB "WiFi")
+                              *cfg-espaco-icone* (min 100 (round (* q 100) 70)))
+                      (format nil "^2~a^n" (icone #xF1EB "WiFi"))))))))))
+
+(defparameter *dias-pt*                ; "Sáb" sem depender da codificação do rc
+  (vector "Seg" "Ter" "Qua" "Qui" "Sex"
+          (coerce (list #\S (code-char 225) #\b) 'string) "Dom"))
+(defparameter *meses-pt*
+  #("Jan" "Fev" "Mar" "Abr" "Mai" "Jun" "Jul" "Ago" "Set" "Out" "Nov" "Dez"))
+
+(defun fmt-hora ()
+  "Ícone de calendário cinza, depois 22:06, Qui 27 Jul (hora local)."
+  (multiple-value-bind (seg min hora dia mes ano dow)
+      (decode-universal-time (get-universal-time))
+    (declare (ignore seg ano))
+    (format nil "^3~a^n~a~2,'0d:~2,'0d, ~a ~d ~a"
+            (icone #xF073 "") *cfg-espaco-icone* hora min
+            (aref *dias-pt* dow) dia (aref *meses-pt* (1- mes)))))
 
 (defun atualizar-estado ()
   (flet ((seguro (f) (handler-case (funcall f) (error () ""))))
     (setf *estado-bateria* (seguro #'fmt-bateria)
-          *estado-cpu*     (seguro #'fmt-cpu)
-          *estado-ram*     (seguro #'fmt-ram)
           *estado-rede*    (seguro #'fmt-rede))))
+
+(rc-log "bateria detectada: ~a" (achar-bateria))
 
 (defvar *timer-estado* nil)
 (when *timer-estado* (ignore-errors (cancel-timer *timer-estado*)))
 (setf *timer-estado*
       (run-with-timer 0 *cfg-intervalo-estado* #'atualizar-estado))
 
-(add-screen-mode-line-formatter #\B (lambda (ml) (declare (ignore ml)) *estado-bateria*))
-(add-screen-mode-line-formatter #\U (lambda (ml) (declare (ignore ml)) *estado-cpu*))
-(add-screen-mode-line-formatter #\R (lambda (ml) (declare (ignore ml)) *estado-ram*))
-(add-screen-mode-line-formatter #\N (lambda (ml) (declare (ignore ml)) *estado-rede*))
+(defun juntar-com (itens)
+  "ITENS: lista de (TEXTO . ESPAÇO-ANTES). Salta vazios; o 1.º não leva espaço."
+  (with-output-to-string (o)
+    (let ((primeiro t))
+      (dolist (i itens)
+        (unless (string= (car i) "")
+          (unless primeiro (write-string (cdr i) o))
+          (write-string (car i) o)
+          (setf primeiro nil))))))
+
+(add-screen-mode-line-formatter
+ #\Z (lambda (ml)
+       (declare (ignore ml))
+       (juntar-com
+        (list (cons (seg-swank) "")
+              (cons *estado-rede* *cfg-espaco-seg*)
+              (cons *estado-bateria* *cfg-espaco-seg*)
+              (cons (handler-case (fmt-hora) (error () ""))
+                    *cfg-espaco-hora*)))))
 
 ;;; ---------------------------------------------------------------------
 (setf *screen-mode-line-format*
-      (list "^5[%g]^n "       ; grupos
-            "%W"              ; janelas desta cabeça
-            "^>"              ; alinhar à direita
-            "%S"              ; swank
-            "%N"              ; rede
-            "%U"              ; cpu
-            "%R"              ; ram
-            "%B"              ; bateria
-            "%d"))            ; hora
+      (list "^2[^n%g^2]^n"    ; grupos (rosa só nos parênteses)
+            *cfg-separador*
+            "%W"             ; janelas desta cabeça
+            "^>"             ; alinhar à direita
+            "%Z"))           ; wifi  BAT  data/hora
 
 (defun cabeca-da-barra (screen)
   "A cabeça com a resolução do painel; na falta dela, a primeira."
@@ -455,6 +811,9 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
 (rc-try "barra"
   (let* ((scr (current-screen))
          (cab (cabeca-da-barra scr)))
+    (dolist (h (screen-heads scr))
+      (rc-log "cabeça ~d: ~dx~d~a" (head-number h) (head-width h) (head-height h)
+              (if (eq h cab) "  [barra]" "")))
     (unless (head-mode-line cab)
       (toggle-mode-line scr cab))))
 
@@ -483,12 +842,12 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
     "Prompt the user to confirm quitting StumpWM."
     (if (y-or-n-p (format nil "~@{~a~^~%~}"
                           "You are about to quit the window manager to TTY."
-                          "Really ^2quit^n ^4StumpWM^n?"
-                          "^5Confirm?^n "))
+                          "Really ^2quit^n StumpWM?"
+                          "Confirm? "))
         (quit)
         (xlib:unmap-window (screen-message-window (current-screen))))))
 
-;; Splits invertidos: S = lado a lado, s = um sobre o outro
+;; Splits invertidos: vsplit = lado a lado, hsplit = um sobre o outro (C-z 3 / C-z 2)
 (rc-try "override-splits"
   (defcommand (vsplit tile-group) (&optional (ratio "1/2")) (:string)
     "Split the current frame into 2 side-by-side frames."
@@ -497,11 +856,6 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
   (defcommand (hsplit tile-group) (&optional (ratio "1/2")) (:string)
     "Split the current frame into 2 frames, one on top of the other."
     (split-frame-in-dir (current-group) :row (read-from-string ratio)))
-
-  (undefine-key *tile-group-root-map* (kbd "S"))
-  (undefine-key *tile-group-root-map* (kbd "s"))
-  (define-key *root-map* (kbd "S") "vsplit")
-  (define-key *root-map* (kbd "s") "hsplit")
 
   (defcommand (vsplit-equally tile-group) (amt)
     ((:number "Enter the number of frames: "))
@@ -513,5 +867,8 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
     "Split current frame in n rows of equal size."
     (split-frame-eql-parts (current-group) :row amt)))
 
-(rc-log "rc concluído sem aborto")
+(rc-log "rc concluído: ~d erro(s); ttf=~a" *rc-erros* *ttf-ok*)
+(when (plusp *rc-erros*)
+  (rc-try "aviso"
+    (message "^2rc: ~d erro(s)^n — ver ~~/.stumpwm-rc.log" *rc-erros*)))
 ;;; init.lisp ends here
