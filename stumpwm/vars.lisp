@@ -25,6 +25,7 @@
 (defparameter *cfg-espaco-icone*  " ")          ; entre ícone/rótulo e valor
 (defparameter *cfg-espaco-seg*    "   ")        ; entre wifi, bateria (dir.)
 (defparameter *cfg-espaco-hora*   "  ")         ; entre bateria e data/hora
+(defparameter *cfg-espaco-power*  "    ")       ; entre data/hora e o botão de energia
 
 ;;; Fonte (Hack Nerd Font via ttf-fonts; sem ela, cai na fonte core)
 (defparameter *cfg-fonte-familias*             ; tenta por ordem; a Mono mete
@@ -76,6 +77,17 @@
 (defparameter *cfg-passo-brilho* 10)           ; % por toque
 (defparameter *cfg-volume-max*   100)          ; tecto do volume (%)
 
+;;; Menu de energia (clique no botão da barra, ou C-z q p)
+(defparameter *cfg-power-celula*  150)         ; largura de cada opção (px)
+(defparameter *cfg-cmd-suspender* "systemctl suspend")
+(defparameter *cfg-cmd-desligar*  "systemctl poweroff")
+
+;;; Áudio na barra: ao pairar sobre o fone, notificação com título/álbum/capa
+(defparameter *cfg-hover-intervalo* 0.25)      ; segundos entre leituras do ponteiro
+(defparameter *cfg-hover-atraso*    2)         ; leituras seguidas até mostrar
+(defparameter *cfg-hover-seg*       4)         ; duração da notificação (s)
+(defparameter *cfg-cache-capas*     ".cache/stumpwm-capas/")  ; relativo ao home
+
 ;;; Mensagens do StumpWM (as que aparecem a meio do ecrã)
 (defparameter *cfg-msg-gravidade* :center)     ; :center :top :bottom :top-left ...
 (defparameter *cfg-msg-padding*   6)
@@ -92,7 +104,8 @@
 ;;; Programas e ficheiros
 (defparameter *cfg-terminal*   "kitty")
 (defparameter *cfg-navegador*  "firefox")
-(defparameter *cfg-wallpaper*  "~/Pictures/Wallpapers/Desktop/Artwork/88.png")
+(defparameter *cfg-wallpaper*  "~/MediaBox/Pictures/Wallpapers/Desktop/Default/5.png")
+(defparameter *cfg-quicklisp-dir* ".local/share/quicklisp/")  ; relativo ao home
 (defparameter *cfg-swank-porta* 4004)
 (defparameter *cfg-capturas-dir* "~/Pictures")   ; destino de C-z s / C-z S
 

@@ -58,7 +58,8 @@
 (ligar "q" (mapa-de "q" "quit-confirm"
                     "r" "restart-hard"
                     "l" "loadrc"
-                    "e" "toggle-swank"))
+                    "e" "toggle-swank"
+                    "p" "power-menu"))
 (ligar "C-g" "abort")
 (ligar "C-z" "send-escape")
 
@@ -253,3 +254,165 @@
 (define-key *top-map* (kbd "XF86AudioMute")         "volume-mudo")
 (define-key *top-map* (kbd "XF86MonBrightnessUp")   "brilho-mais")
 (define-key *top-map* (kbd "XF86MonBrightnessDown") "brilho-menos")
+
+;;;; =====================================================================
+;;;; 2. BARRA INTERACTIVA — clique no power, hover no áudio, menu de energia
+;;;; =====================================================================
+
+;;; Cliques: *mode-line-click-hook* entrega (barra botão x y), com x relativo
+;;; à barra. Botão esquerdo sobre o ícone de energia abre o menu.
+(defun clique-na-barra (ml botao x y)
+  (declare (ignore y))
+  (when (eql botao 1)
+    (case (segmento-em x (xlib:drawable-width (mode-line-window ml)))
+      (:power (run-commands "power-menu")))))
+
+(add-hook *mode-line-click-hook* 'clique-na-barra)
+
+;;; Hover: a barra do StumpWM não recebe eventos de movimento. Em vez deles,
+;;; um temporizador consulta o ponteiro e vê se está sobre o segmento :audio.
+(defvar *hover-contagem* 0)
+(defvar *timer-hover* nil)
+
+(defun ponteiro-na-barra ()
+  "(values X LARGURA) do ponteiro sobre a barra principal, ou NIL."
+  (let* ((scr (current-screen))
+         (ml (head-mode-line (cabeca-da-barra scr))))
+    (when ml
+      (let ((win (mode-line-window ml)))
+        (multiple-value-bind (rx ry mesmo-ecra filho)
+            (xlib:query-pointer (screen-root scr))
+          (declare (ignore ry))
+          (when (and mesmo-ecra filho (xlib:window-equal filho win))
+            (values (- rx (xlib:drawable-x win))
+                    (xlib:drawable-width win))))))))
+
+(defun sh-quote (s)
+  "S entre plicas, seguro para o shell."
+  (with-output-to-string (o)
+    (write-char #\' o)
+    (loop for c across s
+          do (if (char= c #\') (write-string "'\\''" o) (write-char c o)))
+    (write-char #\' o)))
+
+(defun mostrar-capa ()
+  "Notificação com título, álbum/artista e capa da faixa actual (playerctl)."
+  (let* ((titulo (saida "playerctl metadata title 2>/dev/null"))
+         (album  (saida "playerctl metadata album 2>/dev/null"))
+         (artista (saida "playerctl metadata artist 2>/dev/null"))
+         (url    (saida "playerctl metadata mpris:artUrl 2>/dev/null"))
+         (cache  (namestring (merge-pathnames *cfg-cache-capas*
+                                              (user-homedir-pathname))))
+         (local  (when (eql 0 (search "http" url))
+                   (format nil "~acapa-~36r.img" cache (abs (sxhash url)))))
+         (icone  (cond (local local)
+                       ((eql 0 (search "file://" url)) url)))
+         (cmds '()))
+    (when local
+      (ensure-directories-exist cache)
+      (push (format nil "[ -s ~a ] || curl -sfL --max-time 4 -o ~a ~a"
+                    (sh-quote local) (sh-quote local) (sh-quote url))
+            cmds))
+    (push (format nil "notify-send -a audio -u low -t ~d -h string:x-dunst-stack-tag:audio ~@[-i ~a ~]~a ~a"
+                  (round (* 1000 *cfg-hover-seg*))
+                  (and icone (sh-quote icone))
+                  (sh-quote (if (string= titulo "") "Nenhum áudio a tocar" titulo))
+                  (sh-quote (string-trim '(#\Newline)
+                                         (format nil "~a~%~a" album artista))))
+          cmds)
+    (run-shell-command (format nil "~{~a~^; ~}" (nreverse cmds)))))
+
+(defun verificar-hover ()
+  (ignore-errors
+   (multiple-value-bind (x largura) (ponteiro-na-barra)
+     (if (and x (eq (segmento-em x largura) :audio))
+         (when (= (incf *hover-contagem*) *cfg-hover-atraso*)
+           (mostrar-capa))
+         (setf *hover-contagem* 0)))))
+
+(when *timer-hover* (ignore-errors (cancel-timer *timer-hover*)))
+(setf *timer-hover*
+      (run-with-timer 0.5 *cfg-hover-intervalo* #'verificar-hover))
+
+;;; Menu de energia: janela central com ícones e legendas. O StumpWM não
+;;; entrega cliques a janelas de mensagem, por isso escolhe-se pelo teclado:
+;;; setas (ou h l) e RET; 1 2 3 vão directo; ESC cancela.
+(defvar *power-sel* 0)
+(defvar *mapa-power* (make-sparse-keymap))
+
+(defun opcoes-power ()
+  "Lista de (ÍCONE LEGENDA ACÇÃO); ACÇÃO é um comando de shell ou :sair."
+  (list (list #xF186 "Suspender" *cfg-cmd-suspender*)
+        (list #xF011 "Desligar"  *cfg-cmd-desligar*)
+        (list #xF08B "Sair"      :sair)))
+
+(defun celula (str px)
+  "STR centrada numa célula de PX pixels (espaços dos dois lados)."
+  (let* ((esp (max 1 (largura-px " ")))
+         (livre (max 0 (round (- px (largura-px str)) esp)))
+         (esq (floor livre 2)))
+    (format nil "~a~a~a" (make-string esq :initial-element #\Space) str
+            (make-string (- livre esq) :initial-element #\Space))))
+
+(defun desenhar-power ()
+  (let* ((px *cfg-power-celula*)
+         (ops (opcoes-power))
+         (total (* px (length ops)))
+         (linha-icones "")
+         (linha-legendas ""))
+    (loop for (cod nome) in ops
+          for i from 0
+          for cor = (if (= i *power-sel*) "^2" "^3")
+          do (setf linha-icones
+                   (concatenate 'string linha-icones
+                                (format nil "~a~a^n" cor (celula (icone cod "*") px)))
+                   linha-legendas
+                   (concatenate 'string linha-legendas
+                                (format nil "~a~a^n" cor (celula nome px)))))
+    (let ((*timeout-wait* 600)
+          (*message-window-y-padding* 14))
+      (message "~a"
+               (format nil "^n~a~%~%~a~%~a~%~%^3~a"
+                       (celula "Energia" total)
+                       linha-icones linha-legendas
+                       (celula "setas ou 1-3   RET ok   ESC sai" total))))))
+
+(defun fechar-power ()
+  (pop-top-map)
+  (unless (ignore-errors (funcall 'unmap-all-message-windows) t)
+    (let ((*timeout-wait* 0.05))
+      (message " "))))
+
+(defcommand power-menu () ()
+  "Abre o menu de energia (suspender, desligar, sair)."
+  (setf *power-sel* 0)
+  (push-top-map *mapa-power*)
+  (desenhar-power))
+
+(defcommand power-ir (n) ((:number "Opção: "))
+  "Selecciona a opção N (0 a 2) do menu de energia."
+  (setf *power-sel* (mod n (length (opcoes-power))))
+  (desenhar-power))
+
+(defcommand power-passo (d) ((:number "Passo: "))
+  "Move a selecção do menu de energia por D opções."
+  (power-ir (+ *power-sel* d)))
+
+(defcommand power-executar () ()
+  "Executa a opção escolhida do menu de energia."
+  (let ((acao (third (nth *power-sel* (opcoes-power)))))
+    (fechar-power)
+    (if (eq acao :sair)
+        (run-commands "quit")
+        (run-shell-command acao))))
+
+(defcommand power-fechar () ()
+  "Fecha o menu de energia sem fazer nada."
+  (fechar-power))
+
+(dolist (par '(("Right" "power-passo 1")  ("l" "power-passo 1")  ("C-f" "power-passo 1")
+               ("Left"  "power-passo -1") ("h" "power-passo -1") ("C-b" "power-passo -1")
+               ("1" "power-ir 0") ("2" "power-ir 1") ("3" "power-ir 2")
+               ("RET" "power-executar")
+               ("ESC" "power-fechar") ("q" "power-fechar") ("C-g" "power-fechar")))
+  (define-key *mapa-power* (kbd (first par)) (second par)))

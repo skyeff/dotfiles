@@ -10,6 +10,8 @@
 ;;;; =====================================================================
 ;; Fonte TTF. *ttf-ok* decide se a barra usa glifos Nerd Font.
 (defvar *ttf-ok* nil)
+(defvar *fontes-barra* nil
+  "Fontes (texto, ícones) da barra; servem também para medir larguras.")
 
 (defun registar-dirs-fontes ()
   "O clx-truetype só varre /usr/share/fonts e ~/.fonts; acrescenta os teus."
@@ -43,8 +45,9 @@
                             :family (car esc) :subfamily (cdr esc) :size tam)))
       ;; Mesma família (Mono: cada ícone cabe na sua célula), dois tamanhos:
       ;; ^f0 texto, ^f1 ícones.
-      (set-font (list (fonte *cfg-fonte-tamanho*)
-                      (fonte *cfg-fonte-icones*))))))
+      (setf *fontes-barra* (list (fonte *cfg-fonte-tamanho*)
+                                 (fonte *cfg-fonte-icones*)))
+      (set-font *fontes-barra*))))
 
 ;; Cada etapa é registada à parte: o log diz exactamente onde falhou.
 (setf *ttf-ok*
@@ -136,10 +139,11 @@
 (setf *mode-line-border-color*     *mode-line-bg-color*)
 (setf *mode-line-foreground-color* *mode-line-fg-color*)
 
-;;; Lado direito: wifi  BAT  data/hora. Leitura directa de /sys e /proc.
+;;; Lado direito: fone  wifi  BAT  data/hora  power. Leitura de /sys, /proc, pactl.
 ;;; Cores: ^3 cinza (ícones e rótulos), branco (valores), ^2 rosa (alerta).
 (defvar *estado-bateria* "")
 (defvar *estado-rede* "")
+(defvar *estado-audio* "")
 
 (defun ler-linha (caminho)
   (with-open-file (s caminho :if-does-not-exist nil)
@@ -212,10 +216,25 @@
             (icone #xF073 "") *cfg-espaco-icone* hora min
             (aref *dias-pt* dow) dia (aref *meses-pt* (1- mes)))))
 
+(defun texto-audio (pct mudo)
+  "Fone cinza e volume em branco; mudo: tudo rosa. Vazio sem leitura."
+  (cond ((null pct) "")
+        (mudo (format nil "^2~a^n~amudo" (icone #xF025 "FONE") *cfg-espaco-icone*))
+        (t (format nil "^3~a^n~a~d%" (icone #xF025 "FONE") *cfg-espaco-icone* pct))))
+
+(defun fmt-audio ()
+  (multiple-value-bind (pct mudo) (estado-volume)
+    (texto-audio pct mudo)))
+
+(defun fmt-power ()
+  "Botão de energia: ícone cinza (o clique está em teclas.lisp)."
+  (format nil "^3~a^n" (icone #xF011 "OFF")))
+
 (defun atualizar-estado ()
   (flet ((seguro (f) (handler-case (funcall f) (error () ""))))
     (setf *estado-bateria* (seguro #'fmt-bateria)
-          *estado-rede*    (seguro #'fmt-rede))))
+          *estado-rede*    (seguro #'fmt-rede)
+          *estado-audio*   (seguro #'fmt-audio))))
 
 (rc-log "bateria detectada: ~a" (achar-bateria))
 
@@ -234,15 +253,72 @@
           (write-string (car i) o)
           (setf primeiro nil))))))
 
+(defun segmentos-direita ()
+  "Segmentos do lado direito, da esquerda para a direita, sem os vazios:
+lista de (ID TEXTO ESPAÇO-ANTES). Serve a barra e o teste de cliques."
+  (remove-if (lambda (s) (string= (second s) ""))
+             (list (list :swank   (seg-swank) "")
+                   (list :audio   *estado-audio*    *cfg-espaco-seg*)
+                   (list :rede    *estado-rede*     *cfg-espaco-seg*)
+                   (list :bateria *estado-bateria*  *cfg-espaco-seg*)
+                   (list :hora    (handler-case (fmt-hora) (error () ""))
+                         *cfg-espaco-hora*)
+                   (list :power   (fmt-power)       *cfg-espaco-power*))))
+
 (add-screen-mode-line-formatter
  #\Z (lambda (ml)
        (declare (ignore ml))
-       (juntar-com
-        (list (cons (seg-swank) "")
-              (cons *estado-rede* *cfg-espaco-seg*)
-              (cons *estado-bateria* *cfg-espaco-seg*)
-              (cons (handler-case (fmt-hora) (error () ""))
-                    *cfg-espaco-hora*)))))
+       (juntar-com (mapcar (lambda (s) (cons (second s) (third s)))
+                           (segmentos-direita)))))
+
+;;; Geometria: em que pixels cai cada segmento. O bloco direito é alinhado
+;;; por ^>, por isso mede-se da margem direita para trás, com a largura real
+;;; do texto nas fontes da barra (^f0 texto, ^f1 ícones).
+(defun largura-px (str)
+  "Largura em pixels de STR (com códigos ^) nas fontes da barra."
+  (let ((fontes (or *fontes-barra* (list (screen-font (current-screen)))))
+        (fi 0) (total 0) (i 0) (n (length str))
+        (run (make-string-output-stream)))
+    (flet ((fechar ()
+             (let ((s (get-output-stream-string run)))
+               (when (plusp (length s))
+                 (incf total (text-line-width (or (nth fi fontes) (first fontes))
+                                              s))))))
+      (loop while (< i n)
+            do (let ((c (char str i)))
+                 (if (and (char= c #\^) (< (1+ i) n))
+                     (let ((d (char str (1+ i))))
+                       (cond ((char= d #\^) (write-char #\^ run) (incf i 2))
+                             ((and (char= d #\f) (< (+ i 2) n)
+                                   (digit-char-p (char str (+ i 2))))
+                              (fechar)
+                              (setf fi (digit-char-p (char str (+ i 2))))
+                              (incf i 3))
+                             (t (incf i 2))))
+                     (progn (write-char c run) (incf i)))))
+      (fechar))
+    total))
+
+(defun zonas-direita (largura)
+  "Lista de (ID X0 X1), em pixels, numa barra de LARGURA px."
+  (let* ((medidas (loop for s in (segmentos-direita)
+                        for primeiro = t then nil
+                        collect (list (first s)
+                                      (if primeiro 0 (largura-px (third s)))
+                                      (largura-px (second s)))))
+         (total (reduce #'+ medidas :key (lambda (m) (+ (second m) (third m)))))
+         (x (- largura *mode-line-pad-x* total))
+         (zonas '()))
+    (dolist (m medidas (nreverse zonas))
+      (destructuring-bind (id sep w) m
+        (incf x sep)
+        (push (list id (- x (floor sep 2)) (+ x w (floor sep 2))) zonas)
+        (incf x w)))))
+
+(defun segmento-em (x largura)
+  "ID do segmento do lado direito sob a coordenada X da barra, ou NIL."
+  (loop for (id x0 x1) in (zonas-direita largura)
+        when (<= x0 x x1) return id))
 
 ;;; ---------------------------------------------------------------------
 (setf *screen-mode-line-format*
@@ -424,6 +500,7 @@ a janela de entrada), e a linha onde se escreve."
 
 (defun mostrar-volume ()
   (multiple-value-bind (pct mudo) (estado-volume)
+    (setf *estado-audio* (texto-audio pct mudo))   ; a barra acompanha já
     (osd (if (null pct)
              "volume: sem leitura"
              (format nil "~a  ~a  ~d%~a"
