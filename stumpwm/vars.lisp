@@ -21,11 +21,11 @@
 ;;; Cores da barra (por defeito herdam as gerais)
 (defparameter *cfg-barra-fundo* *cfg-cor-fundo*)
 (defparameter *cfg-barra-texto* *cfg-cor-texto*)
-(defparameter *cfg-separador*     "    ")       ; entre grupos e janelas (esq.)
+(defparameter *cfg-separador*     "  ")       ; entre grupos e janelas (esq.)
 (defparameter *cfg-espaco-icone*  " ")          ; entre ícone/rótulo e valor
-(defparameter *cfg-espaco-seg*    "   ")        ; entre wifi, bateria (dir.)
+(defparameter *cfg-espaco-seg*    "  ")        ; entre wifi, bateria (dir.)
 (defparameter *cfg-espaco-hora*   "  ")         ; entre bateria e data/hora
-(defparameter *cfg-espaco-power*  "    ")       ; entre data/hora e o botão de energia
+(defparameter *cfg-espaco-power*  "  ")       ; entre data/hora e o botão de energia
 
 ;;; Fonte (Hack Nerd Font via ttf-fonts; sem ela, cai na fonte core)
 (defparameter *cfg-fonte-familias*             ; tenta por ordem; a Mono mete
@@ -39,7 +39,7 @@
 (defparameter *cfg-fonte-core*     "-xos4-terminus-medium-r-normal--20-*-*-*-*-*-*-*")
 
 ;;; Barra
-(defparameter *cfg-barra-posicao*  :top)       ; :top (cima) ou :bottom (baixo)
+(defparameter *cfg-barra-posicao*  :bottom)       ; :top (cima) ou :bottom (baixo)
 (defparameter *cfg-barra-padding-y* 1)         ; altura extra (px)
 (defparameter *cfg-barra-padding-x* 8)
 (defparameter *cfg-bateria*        nil)        ; nil = detecta (BAT0, BAT1...)
@@ -106,6 +106,7 @@
 (defparameter *cfg-navegador*  "firefox")
 (defparameter *cfg-wallpaper*  "~/MediaBox/Pictures/Wallpapers/Desktop/Default/5.png")
 (defparameter *cfg-quicklisp-dir* ".local/share/quicklisp/")  ; relativo ao home
+(defparameter *cfg-cmd-desmontar* "udiskie-umount --all --detach")   ; C-z u
 (defparameter *cfg-swank-porta* 4004)
 (defparameter *cfg-capturas-dir* "~/Pictures")   ; destino de C-z s / C-z S
 

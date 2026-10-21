@@ -12,7 +12,7 @@
 ;;; Filosofia: C-z faz de C-x do Emacs. Uma tecla, uma função; só o que é
 ;;; raro ou destrutivo vive num sub-prefixo (q sessão, t grupos, v visual).
 ;;;   SPC              menu de aplicações
-;;;   RET c  kitty     w  firefox     e  emacs     l  bloquear     x  comandos
+;;;   RET c  kitty     w  firefox     e  emacs     u  desmontar USB     x  comandos
 ;;;   0 1 2 3 + o      molduras (como no Emacs)
 ;;;   C-f C-b C-n C-p  foco por direcção;  M-f M-b M-n M-p  troca de lugar
 ;;;   b k K TAB < >    janelas (os "buffers");  F ecrã inteiro
@@ -49,7 +49,7 @@
 (ligar "w" "firefox")
 (ligar "e" "swm-emacs")
 (ligar "SPC" "lancador")              ; menu de aplicações (definido mais abaixo)
-(ligar "l" "exec slock")
+(ligar "u" (format nil "exec ~a" *cfg-cmd-desmontar*))   ; desmonta e ejecta pendrives
 
 ;;; Comandos (o M-x do Emacs)
 (ligar "x" "colon")
