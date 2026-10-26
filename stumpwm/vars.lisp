@@ -21,7 +21,7 @@
 ;;; Cores da barra (por defeito herdam as gerais)
 (defparameter *cfg-barra-fundo* *cfg-cor-fundo*)
 (defparameter *cfg-barra-texto* *cfg-cor-texto*)
-(defparameter *cfg-separador*     "  ")       ; entre grupos e janelas (esq.)
+(defparameter *cfg-separador*     "    ")       ; entre grupos e janelas (esq.)
 (defparameter *cfg-espaco-icone*  " ")          ; entre ícone/rótulo e valor
 (defparameter *cfg-espaco-seg*    "  ")        ; entre wifi, bateria (dir.)
 (defparameter *cfg-espaco-hora*   "  ")         ; entre bateria e data/hora
@@ -39,7 +39,7 @@
 (defparameter *cfg-fonte-core*     "-xos4-terminus-medium-r-normal--20-*-*-*-*-*-*-*")
 
 ;;; Barra
-(defparameter *cfg-barra-posicao*  :bottom)       ; :top (cima) ou :bottom (baixo)
+(defparameter *cfg-barra-posicao*  :top)       ; :top (cima) ou :bottom (baixo)
 (defparameter *cfg-barra-padding-y* 1)         ; altura extra (px)
 (defparameter *cfg-barra-padding-x* 8)
 (defparameter *cfg-bateria*        nil)        ; nil = detecta (BAT0, BAT1...)
@@ -77,12 +77,27 @@
 (defparameter *cfg-passo-brilho* 10)           ; % por toque
 (defparameter *cfg-volume-max*   100)          ; tecto do volume (%)
 
-;;; Menu de energia (clique no botão da barra, ou C-z q p)
-(defparameter *cfg-power-celula*  150)         ; largura de cada opção (px)
+;;; Menus (energia, unidades, monitores): janela central com ícones e legendas
+(defparameter *cfg-menu-celula*   150)         ; largura de cada opção (px)
 (defparameter *cfg-cmd-suspender* "systemctl suspend")
 (defparameter *cfg-cmd-desligar*  "systemctl poweroff")
 
-;;; Áudio na barra: ao pairar sobre o fone, notificação com título/álbum/capa
+;;; Unidades externas: montagem automática em /mnt/<nome>, pela ordem da lista
+(defparameter *cfg-drive-base*      "/mnt/")
+(defparameter *cfg-drive-nomes*     '("Alpha" "Beta" "Gama" "Delta"))
+(defparameter *cfg-drive-intervalo* 2)         ; segundos entre leituras do lsblk
+(defparameter *cfg-drive-helper*    "sudo -n /usr/local/bin/stump-mnt")
+(defparameter *cfg-drive-fs*        '("vfat" "exfat" "ntfs" "ext2" "ext3" "ext4"
+                                      "btrfs" "xfs" "f2fs" "hfsplus" "iso9660" "udf"))
+(defparameter *cfg-gestor-ficheiros* "xdg-open")   ; "Abrir" no menu das unidades
+
+;;; Monitores (utilities/monitores.lisp)
+(defparameter *cfg-monitor-intervalo* 2)       ; segundos entre leituras do xrandr
+(defparameter *cfg-monitor-auto*   :estender)  ; ao ligar um ecrã: :estender ou :espelhar
+(defparameter *cfg-monitor-lado*   :direita)   ; :direita :esquerda :acima :abaixo
+(defparameter *cfg-monitor-internos* '("eDP" "LVDS" "DSI"))   ; prefixos dos ecrãs internos
+
+;;; Hover na barra: áudio (título/álbum/capa), bateria, calendário
 (defparameter *cfg-hover-intervalo* 0.25)      ; segundos entre leituras do ponteiro
 (defparameter *cfg-hover-atraso*    2)         ; leituras seguidas até mostrar
 (defparameter *cfg-hover-seg*       4)         ; duração da notificação (s)
@@ -104,9 +119,8 @@
 ;;; Programas e ficheiros
 (defparameter *cfg-terminal*   "kitty")
 (defparameter *cfg-navegador*  "firefox")
-(defparameter *cfg-wallpaper*  "~/MediaBox/Pictures/Wallpapers/Desktop/Default/5.png")
+(defparameter *cfg-wallpaper*  "~/Atrium/Pictures/Wallpapers/Desktop/Artwork/5.png")
 (defparameter *cfg-quicklisp-dir* ".local/share/quicklisp/")  ; relativo ao home
-(defparameter *cfg-cmd-desmontar* "udiskie-umount --all --detach")   ; C-z u
 (defparameter *cfg-swank-porta* 4004)
 (defparameter *cfg-capturas-dir* "~/Pictures")   ; destino de C-z s / C-z S
 

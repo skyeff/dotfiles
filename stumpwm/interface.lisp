@@ -139,11 +139,13 @@
 (setf *mode-line-border-color*     *mode-line-bg-color*)
 (setf *mode-line-foreground-color* *mode-line-fg-color*)
 
-;;; Lado direito: fone  wifi  BAT  data/hora  power. Leitura de /sys, /proc, pactl.
+;;; Lado direito: monitor  HD  fone  wifi  BAT  data/hora  power (monitor e HD só quando existem). Leitura de /sys, /proc, pactl.
 ;;; Cores: ^3 cinza (ícones e rótulos), branco (valores), ^2 rosa (alerta).
 (defvar *estado-bateria* "")
 (defvar *estado-rede* "")
 (defvar *estado-audio* "")
+(defvar *estado-drive* "")      ; ícone do HD: só com unidade montada (utilities/discos.lisp)
+(defvar *estado-monitor* "")    ; ícone do monitor: só com ecrã extra (utilities/monitores.lisp)
 
 (defun ler-linha (caminho)
   (with-open-file (s caminho :if-does-not-exist nil)
@@ -258,6 +260,8 @@
 lista de (ID TEXTO ESPAÇO-ANTES). Serve a barra e o teste de cliques."
   (remove-if (lambda (s) (string= (second s) ""))
              (list (list :swank   (seg-swank) "")
+                   (list :monitor *estado-monitor*  *cfg-espaco-seg*)
+                   (list :drive   *estado-drive*    *cfg-espaco-seg*)
                    (list :audio   *estado-audio*    *cfg-espaco-seg*)
                    (list :rede    *estado-rede*     *cfg-espaco-seg*)
                    (list :bateria *estado-bateria*  *cfg-espaco-seg*)
@@ -321,10 +325,59 @@ lista de (ID TEXTO ESPAÇO-ANTES). Serve a barra e o teste de cliques."
         when (<= x0 x x1) return id))
 
 ;;; ---------------------------------------------------------------------
+;;; Janelas de TODAS as cabeças na barra: primeiro as desta, depois as das
+;;; outras (cinzentas, antecedidas de um ícone de monitor).
+;;;
+;;; Cliques: o StumpWM só entrega um clique a uma região que o texto da barra
+;;; declare com ^(:on-click ID args)...^(:on-click-end). O %W de origem faz-o
+;;; para cada janela; este formatador próprio tem de o fazer também, senão a
+;;; barra mostra as janelas mas não reage ao rato.
+(defun clicar-janela (code id &rest resto)
+  "Clique numa janela da barra: o botão esquerdo foca-a (também noutra cabeça).
+O %W de origem ainda renumera com a roda, flutua com o do meio e FECHA a
+janela com o direito; aqui só o esquerdo actua, para não fechar nada por
+engano."
+  (declare (ignore resto))
+  (when (eq (decode-button-code code) :left-button)
+    (let ((w (window-by-id id)))
+      (when w
+        (focus-all w)
+        (update-mode-lines (current-screen))))))
+
+(when (fboundp 'register-ml-on-click-id)
+  (register-ml-on-click-id :janela-clique #'clicar-janela))
+
+(defun clicavel (texto w)
+  "TEXTO como região clicável da barra, ligada à janela W. Sem suporte a
+:on-click nesta versão do StumpWM, devolve TEXTO tal como veio."
+  (if (fboundp 'format-with-on-click-id)
+      (format-with-on-click-id texto :janela-clique (window-id w))
+      texto))
+
+(defun fmt-janelas-todas (ml)
+  (handler-case
+      (let* ((grupo (current-group (mode-line-screen ml)))
+             (aqui  (sort1 (copy-list (head-windows grupo (mode-line-head ml)))
+                           #'< :key #'window-number))
+             (fora  (sort1 (set-difference (group-windows grupo) aqui)
+                           #'< :key #'window-number)))
+        (flet ((item (w)
+                 (let ((s (format-expand *window-formatters* *window-format* w)))
+                   (clicavel (if (eq w (current-window)) (fmt-highlight s) s)
+                             w))))
+          (format nil "~{~a~^ ~}~@[~a~]"
+                  (mapcar #'item aqui)
+                  (when fora
+                    (format nil "~:[~; ~]^3~a ~{~a~^ ~}^n"
+                            aqui (icone #xF108 "ext") (mapcar #'item fora))))))
+    (error () "")))
+
+(add-screen-mode-line-formatter #\V 'fmt-janelas-todas)
+
 (setf *screen-mode-line-format*
       (list "^2[^n%g^2]^n"    ; grupos (rosa só nos parênteses)
             *cfg-separador*
-            "%W"             ; janelas desta cabeça
+            "%V"             ; janelas de todas as cabeças
             "^>"             ; alinhar à direita
             "%Z"))           ; wifi  BAT  data/hora
 
@@ -337,7 +390,8 @@ lista de (ID TEXTO ESPAÇO-ANTES). Serve a barra e o teste de cliques."
                  cabs)
         (first cabs))))
 
-(rc-try "barra"
+(defun garantir-barra ()
+  "Cria a barra na cabeça certa, se ainda não existir."
   (let* ((scr (current-screen))
          (cab (cabeca-da-barra scr)))
     (dolist (h (screen-heads scr))
@@ -345,6 +399,13 @@ lista de (ID TEXTO ESPAÇO-ANTES). Serve a barra e o teste de cliques."
               (if (eq h cab) "  [barra]" "")))
     (unless (head-mode-line cab)
       (toggle-mode-line scr cab))))
+
+(defun recriar-barra ()
+  "Destrói e recria a barra (depois de as cabeças mudarem)."
+  (ignore-errors (destroy-all-mode-lines))
+  (garantir-barra))
+
+(rc-try "barra" (garantir-barra))
 
 ;;;; =====================================================================
 ;;;; 5. LANÇADOR — menu de aplicações (C-z SPC)
@@ -549,3 +610,196 @@ a janela de entrada), e a linha onde se escreve."
 (defcommand brilho-menos () ()
   "Baixa o brilho e mostra o aviso."
   (ajustar-brilho (- *cfg-passo-brilho*)))
+
+;;;; =====================================================================
+;;;; 7. NOTIFICAÇÕES E HOVER — áudio, bateria, calendário
+;;;; =====================================================================
+
+;;; A barra do StumpWM não recebe eventos de movimento. Em vez deles, um
+;;; temporizador consulta o ponteiro e vê sobre que segmento está; ao fim de
+;;; *cfg-hover-atraso* leituras seguidas, corre a acção desse segmento.
+;;; A janela da notificação é do dunst (origin/offset em dunstrc; para o
+;;; calendário alinhar, a fonte do dunst tem de ser monoespaçada, como a Hack).
+
+(defun cmd-notificar (tag titulo corpo &key icone (seg *cfg-hover-seg*))
+  "Comando de shell que mostra uma notificação; TAG faz as novas substituírem as velhas."
+  (format nil "notify-send -a ~a -u low -t ~d -h string:x-dunst-stack-tag:~a ~@[-i ~a ~]~a ~a"
+          tag (round (* 1000 seg)) tag
+          (and icone (sh-quote icone))
+          (sh-quote titulo) (sh-quote corpo)))
+
+(defun notificar (tag titulo corpo &rest chaves)
+  (run-shell-command (apply #'cmd-notificar tag titulo corpo chaves)))
+
+(defun glifo (codigo)
+  "O glifo Nerd Font CODIGO como texto, para o corpo das notificações."
+  (string (code-char codigo)))
+
+;;; --- áudio: título, álbum e capa --------------------------------------------
+
+(defun mostrar-capa ()
+  "Notificação com título, álbum/artista e capa da faixa actual (playerctl)."
+  (let* ((titulo (saida "playerctl metadata title 2>/dev/null"))
+         (album  (saida "playerctl metadata album 2>/dev/null"))
+         (artista (saida "playerctl metadata artist 2>/dev/null"))
+         (url    (saida "playerctl metadata mpris:artUrl 2>/dev/null"))
+         (cache  (namestring (merge-pathnames *cfg-cache-capas*
+                                              (user-homedir-pathname))))
+         (local  (when (eql 0 (search "http" url))
+                   (format nil "~acapa-~36r.img" cache (abs (sxhash url)))))
+         (imagem (cond (local local)
+                       ((eql 0 (search "file://" url)) url)))
+         (cmds '()))
+    (when local
+      (ensure-directories-exist cache)
+      (push (format nil "[ -s ~a ] || curl -sfL --max-time 4 -o ~a ~a"
+                    (sh-quote local) (sh-quote local) (sh-quote url))
+            cmds))
+    (push (cmd-notificar "audio"
+                         (if (string= titulo "") "Nenhum áudio a tocar" titulo)
+                         (string-trim '(#\Newline) (format nil "~a~%~a" album artista))
+                         :icone imagem)
+          cmds)
+    (run-shell-command (format nil "~{~a~^; ~}" (nreverse cmds)))))
+
+;;; --- bateria: estado, tempo, consumo, saúde ---------------------------------
+
+(defun sys-num (dir nome)
+  (let ((l (ler-linha (concatenate 'string dir nome))))
+    (and l (parse-integer l :junk-allowed t))))
+
+(defun fmt-duracao (horas)
+  (let* ((min (round (* horas 60)))
+         (h (floor min 60))
+         (m (mod min 60)))
+    (if (plusp h) (format nil "~dh ~2,'0dmin" h m) (format nil "~dmin" m))))
+
+(defun mostrar-bateria ()
+  (let ((nome (achar-bateria)))
+    (if (null nome)
+        (notificar "bateria" "Sem bateria" "Nenhuma bateria detectada" :icone "dialog-information")
+        (let* ((dir (format nil "/sys/class/power_supply/~a/" nome))
+               (cap (sys-num dir "capacity"))
+               (st (or (ler-linha (concatenate 'string dir "status")) ""))
+               (e-now (or (sys-num dir "energy_now") (sys-num dir "charge_now")))
+               (e-full (or (sys-num dir "energy_full") (sys-num dir "charge_full")))
+               (e-proj (or (sys-num dir "energy_full_design")
+                           (sys-num dir "charge_full_design")))
+               (p-now (sys-num dir "power_now"))
+               (i-now (sys-num dir "current_now"))
+               (taxa (or p-now i-now))            ; µW ou µA, par de e-now (µWh ou µAh)
+               (volt (sys-num dir "voltage_now"))
+               (ciclos (sys-num dir "cycle_count"))
+               (watts (cond (p-now (/ p-now 1e6))
+                            ((and i-now volt) (/ (* i-now volt) 1e12))))
+               (descarga (string= st "Discharging"))
+               (horas (and e-now taxa (plusp taxa)
+                           (cond (descarga (/ e-now taxa))
+                                 ((and (string= st "Charging") e-full)
+                                  (/ (- e-full e-now) taxa)))))
+               (estado (cond ((string= st "Charging")     (cons #xF0E7 "A carregar"))
+                             (descarga                    (cons #xF242 "A descarregar"))
+                             ((string= st "Full")         (cons #xF240 "Carga completa"))
+                             ((string= st "Not charging") (cons #xF1E6 "Ligada à corrente"))
+                             (t                           (cons #xF240 st)))))
+          (notificar "bateria"
+                     (format nil "~a  Bateria ~@[~d%~]" (glifo #xF240) cap)
+                     (format nil "~{~a~^~%~}"
+                             (remove nil
+                                     (list
+                                      (format nil "~a  ~a" (glifo (car estado)) (cdr estado))
+                                      (and horas
+                                           (format nil "~a  ~a ~a" (glifo #xF017)
+                                                   (fmt-duracao horas)
+                                                   (if descarga "restantes" "para carregar")))
+                                      (and watts (format nil "~a  ~,1f W" (glifo #xF0E4) watts))
+                                      (and e-full e-proj (plusp e-proj)
+                                           (format nil "~a  Saúde ~d%" (glifo #xF004)
+                                                   (round (* 100 e-full) e-proj)))
+                                      (and ciclos (plusp ciclos)
+                                           (format nil "~a  ~d ciclos" (glifo #xF021) ciclos))
+                                      (and volt (format nil "~a  ~,2f V" (glifo #xF0E7)
+                                                        (/ volt 1e6))))))
+                     :icone "battery")))))
+
+;;; --- data: calendário do mês ------------------------------------------------
+
+(defparameter *meses-longos-pt*
+  (vector "Janeiro" "Fevereiro"
+          (coerce (list #\M #\a #\r (code-char 231) #\o) 'string)   ; "Março"
+          "Abril" "Maio" "Junho" "Julho" "Agosto" "Setembro" "Outubro"
+          "Novembro" "Dezembro"))
+
+(defun dias-no-mes (ano mes)
+  (case mes
+    ((4 6 9 11) 30)
+    (2 (if (and (zerop (mod ano 4)) (or (plusp (mod ano 100)) (zerop (mod ano 400))))
+           29 28))
+    (t 31)))
+
+(defun linhas-calendario (ano mes hoje)
+  "Linhas do mês (segunda a domingo), com o dia HOJE a negrito e sublinhado."
+  (let* ((inicio (nth-value 6 (decode-universal-time
+                               (encode-universal-time 0 0 0 1 mes ano 0) 0)))
+         (n (dias-no-mes ano mes))
+         (linhas (list (format nil "~{~a~^ ~}" (coerce *dias-pt* 'list))))
+         (atual '()))
+    (dotimes (c (* 7 (ceiling (+ inicio n) 7)))
+      (let ((d (+ (- c inicio) 1)))
+        (push (cond ((or (< d 1) (> d n)) "   ")
+                    ((eql d hoje) (format nil "~a<u><b>~d</b></u>" (if (< d 10) "  " " ") d))
+                    (t (format nil "~3d" d)))
+              atual)
+        (when (= (length atual) 7)
+          (push (format nil "~{~a~^ ~}" (reverse atual)) linhas)
+          (setf atual '()))))
+    (nreverse linhas)))
+
+(defun mostrar-calendario ()
+  (multiple-value-bind (seg min hora dia mes ano) (get-decoded-time)
+    (declare (ignore seg min hora))
+    (notificar "calendario"
+               (format nil "~a ~d" (aref *meses-longos-pt* (1- mes)) ano)
+               (format nil "~{~a~^~%~}" (linhas-calendario ano mes dia))
+               :icone "x-office-calendar" :seg (* 1.5 *cfg-hover-seg*))))
+
+;;; --- ponteiro sobre a barra -------------------------------------------------
+
+(defparameter *hover-acoes*
+  (list (cons :audio 'mostrar-capa)
+        (cons :bateria 'mostrar-bateria)
+        (cons :hora 'mostrar-calendario))
+  "Segmento -> função chamada ao pairar sobre ele.")
+
+(defvar *hover-ultimo* nil)
+(defvar *hover-contagem* 0)
+(defvar *timer-hover* nil)
+
+(defun ponteiro-na-barra ()
+  "(values X LARGURA) do ponteiro sobre a barra principal, ou NIL."
+  (let* ((scr (current-screen))
+         (ml (head-mode-line (cabeca-da-barra scr))))
+    (when ml
+      (let ((win (mode-line-window ml)))
+        (multiple-value-bind (rx ry mesmo-ecra filho)
+            (xlib:query-pointer (screen-root scr))
+          (declare (ignore ry))
+          (when (and mesmo-ecra filho (xlib:window-equal filho win))
+            (values (- rx (xlib:drawable-x win))
+                    (xlib:drawable-width win))))))))
+
+(defun verificar-hover ()
+  (ignore-errors
+   (multiple-value-bind (x largura) (ponteiro-na-barra)
+     (let* ((seg (and x (segmento-em x largura)))
+            (acao (and seg (cdr (assoc seg *hover-acoes*)))))
+       (cond ((null acao)
+              (setf *hover-ultimo* nil *hover-contagem* 0))
+             ((eq seg *hover-ultimo*)
+              (when (= (incf *hover-contagem*) *cfg-hover-atraso*)
+                (funcall acao)))
+             (t (setf *hover-ultimo* seg *hover-contagem* 1)))))))
+
+(when *timer-hover* (ignore-errors (cancel-timer *timer-hover*)))
+(setf *timer-hover*
+      (run-with-timer 0.5 *cfg-hover-intervalo* #'verificar-hover))

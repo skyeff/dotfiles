@@ -1,0 +1,66 @@
+#!/bin/bash
+# /usr/local/bin/stump-mnt — monta/desmonta unidades externas em
+# /mnt/{Alpha,Beta,Gama,Delta}. Chamado pelo StumpWM com `sudo -n`.
+#
+#   stump-mnt mount  /dev/sdb1 Alpha
+#   stump-mnt umount Alpha [lazy]
+#
+# Valida tudo o que recebe: só aqueles quatro pontos, só dispositivos de bloco
+# removíveis (USB ou removable=1). Nada de caminhos livres: é isto que torna
+# seguro dar-lhe sudo sem senha.
+set -u
+PATH=/usr/bin:/bin
+accao=${1:-}; a2=${2:-}; a3=${3:-}
+uid=${SUDO_UID:-}; gid=${SUDO_GID:-}
+
+nome_ok() { case $1 in Alpha|Beta|Gama|Delta) return 0 ;; *) return 1 ;; esac; }
+erro()    { echo "stump-mnt: $*" >&2; }
+
+case $accao in
+  mount)
+    dev=$a2; nome=$a3
+    nome_ok "$nome" || { erro "ponto inválido: $nome"; exit 2; }
+    [[ $dev =~ ^/dev/(sd[a-z]+[0-9]*|mmcblk[0-9]+(p[0-9]+)?|nvme[0-9]+n[0-9]+(p[0-9]+)?)$ ]] \
+      || { erro "dispositivo inválido: $dev"; exit 2; }
+    [ -b "$dev" ] || { erro "não é um dispositivo de bloco: $dev"; exit 2; }
+    [ -n "$uid" ] && [ -n "$gid" ] || { erro "correr com sudo"; exit 2; }
+
+    # removível: USB, ou removable=1 no disco-pai
+    sys=$(readlink -f "/sys/class/block/${dev#/dev/}")
+    if [ -e "$sys/partition" ]; then pai=$(dirname "$sys"); else pai=$sys; fi
+    if [ "$(cat "$pai/removable" 2>/dev/null)" != 1 ]; then
+      udevadm info -q property -n "$dev" | grep -qx 'ID_BUS=usb' \
+        || { erro "$dev não é removível"; exit 3; }
+    fi
+
+    ponto=/mnt/$nome
+    mkdir -p "$ponto"
+    if mountpoint -q "$ponto"; then erro "$ponto já está ocupado"; exit 4; fi
+
+    fs=$(lsblk -no FSTYPE "$dev" 2>/dev/null | head -n1)
+    opc="nosuid,nodev"
+    case $fs in
+      vfat)    tipo=vfat;  opc="$opc,uid=$uid,gid=$gid,umask=022,iocharset=utf8,flush" ;;
+      exfat)   tipo=exfat; opc="$opc,uid=$uid,gid=$gid,umask=022" ;;
+      ntfs)    tipo=ntfs3; opc="$opc,uid=$uid,gid=$gid,umask=022" ;;
+      hfsplus) tipo=hfsplus; opc="$opc,uid=$uid,gid=$gid" ;;
+      iso9660|udf) tipo=$fs; opc="$opc,ro" ;;
+      ext2|ext3|ext4|btrfs|xfs|f2fs) tipo=$fs ;;
+      *) erro "sistema de ficheiros não suportado: ${fs:-desconhecido}"; exit 5 ;;
+    esac
+
+    mount -t "$tipo" -o "$opc" "$dev" "$ponto" || exit $?
+    # Sistemas POSIX guardam donos no disco: a raiz passa a ser tua para poderes escrever.
+    case $fs in ext2|ext3|ext4|btrfs|xfs|f2fs) chown "$uid:$gid" "$ponto" ;; esac
+    ;;
+
+  umount)
+    nome_ok "$a2" || { erro "ponto inválido: $a2"; exit 2; }
+    if [ "$a3" = lazy ]; then umount -l "/mnt/$a2"; else umount "/mnt/$a2"; fi
+    ;;
+
+  *)
+    erro "uso: stump-mnt mount DEV NOME | umount NOME [lazy]"
+    exit 64
+    ;;
+esac

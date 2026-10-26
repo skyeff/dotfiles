@@ -12,7 +12,7 @@
 ;;; Filosofia: C-z faz de C-x do Emacs. Uma tecla, uma função; só o que é
 ;;; raro ou destrutivo vive num sub-prefixo (q sessão, t grupos, v visual).
 ;;;   SPC              menu de aplicações
-;;;   RET c  kitty     w  firefox     e  emacs     u  desmontar USB     x  comandos
+;;;   RET c  kitty     w  firefox     e  emacs     u  unidades USB     x  comandos
 ;;;   0 1 2 3 + o      molduras (como no Emacs)
 ;;;   C-f C-b C-n C-p  foco por direcção;  M-f M-b M-n M-p  troca de lugar
 ;;;   b k K TAB < >    janelas (os "buffers");  F ecrã inteiro
@@ -49,7 +49,7 @@
 (ligar "w" "firefox")
 (ligar "e" "swm-emacs")
 (ligar "SPC" "lancador")              ; menu de aplicações (definido mais abaixo)
-(ligar "u" (format nil "exec ~a" *cfg-cmd-desmontar*))   ; desmonta e ejecta pendrives
+(ligar "u" "drive-menu")              ; menu das unidades externas
 
 ;;; Comandos (o M-x do Emacs)
 (ligar "x" "colon")
@@ -59,7 +59,8 @@
                     "r" "restart-hard"
                     "l" "loadrc"
                     "e" "toggle-swank"
-                    "p" "power-menu"))
+                    "p" "power-menu"
+                    "m" "monitor-menu"))
 (ligar "C-g" "abort")
 (ligar "C-z" "send-escape")
 
@@ -256,95 +257,38 @@
 (define-key *top-map* (kbd "XF86MonBrightnessDown") "brilho-menos")
 
 ;;;; =====================================================================
-;;;; 2. BARRA INTERACTIVA — clique no power, hover no áudio, menu de energia
+;;;; 2. CLIQUES E MENUS — energia, unidades externas, monitores
 ;;;; =====================================================================
 
 ;;; Cliques: *mode-line-click-hook* entrega (barra botão x y), com x relativo
-;;; à barra. Botão esquerdo sobre o ícone de energia abre o menu.
+;;; à barra. Botão esquerdo sobre um ícone abre o menu respectivo.
+;;; (O hover está em interface.lisp, secção 7.)
+(defparameter *clique-acoes*
+  '((:power . "power-menu") (:drive . "drive-menu") (:monitor . "monitor-menu")))
+
 (defun clique-na-barra (ml botao x y)
   (declare (ignore y))
   (when (eql botao 1)
-    (case (segmento-em x (xlib:drawable-width (mode-line-window ml)))
-      (:power (run-commands "power-menu")))))
+    (let ((acao (cdr (assoc (segmento-em x (xlib:drawable-width (mode-line-window ml)))
+                            *clique-acoes*))))
+      (when acao (run-commands acao)))))
 
 (add-hook *mode-line-click-hook* 'clique-na-barra)
 
-;;; Hover: a barra do StumpWM não recebe eventos de movimento. Em vez deles,
-;;; um temporizador consulta o ponteiro e vê se está sobre o segmento :audio.
-(defvar *hover-contagem* 0)
-(defvar *timer-hover* nil)
+;;; Menu genérico: janela central com ícones e legendas. O StumpWM não entrega
+;;; cliques a janelas de mensagem, por isso escolhe-se pelo teclado:
+;;;   setas ou h l    mudam de opção        1-9   vão directo
+;;;   cima/baixo      mudam de alvo (a unidade, o lado do monitor)
+;;;   RET executa     ESC / q cancelam
+;;; Cada menu é uma caixa-menu: título, linha de contexto, opções do alvo actual.
+;;; Uma opção é (ÍCONE LEGENDA LEGENDA2 ACÇÃO); ACÇÃO: texto de shell, função ou :sair.
+(defstruct (caixa-menu (:conc-name cm-))
+  titulo sub opcoes (sel 0) (alvo 0) (n-alvos (lambda () 1)))
 
-(defun ponteiro-na-barra ()
-  "(values X LARGURA) do ponteiro sobre a barra principal, ou NIL."
-  (let* ((scr (current-screen))
-         (ml (head-mode-line (cabeca-da-barra scr))))
-    (when ml
-      (let ((win (mode-line-window ml)))
-        (multiple-value-bind (rx ry mesmo-ecra filho)
-            (xlib:query-pointer (screen-root scr))
-          (declare (ignore ry))
-          (when (and mesmo-ecra filho (xlib:window-equal filho win))
-            (values (- rx (xlib:drawable-x win))
-                    (xlib:drawable-width win))))))))
+(defvar *menu* nil "A caixa-menu aberta, ou NIL.")
+(defvar *mapa-menu* (make-sparse-keymap))
 
-(defun sh-quote (s)
-  "S entre plicas, seguro para o shell."
-  (with-output-to-string (o)
-    (write-char #\' o)
-    (loop for c across s
-          do (if (char= c #\') (write-string "'\\''" o) (write-char c o)))
-    (write-char #\' o)))
-
-(defun mostrar-capa ()
-  "Notificação com título, álbum/artista e capa da faixa actual (playerctl)."
-  (let* ((titulo (saida "playerctl metadata title 2>/dev/null"))
-         (album  (saida "playerctl metadata album 2>/dev/null"))
-         (artista (saida "playerctl metadata artist 2>/dev/null"))
-         (url    (saida "playerctl metadata mpris:artUrl 2>/dev/null"))
-         (cache  (namestring (merge-pathnames *cfg-cache-capas*
-                                              (user-homedir-pathname))))
-         (local  (when (eql 0 (search "http" url))
-                   (format nil "~acapa-~36r.img" cache (abs (sxhash url)))))
-         (icone  (cond (local local)
-                       ((eql 0 (search "file://" url)) url)))
-         (cmds '()))
-    (when local
-      (ensure-directories-exist cache)
-      (push (format nil "[ -s ~a ] || curl -sfL --max-time 4 -o ~a ~a"
-                    (sh-quote local) (sh-quote local) (sh-quote url))
-            cmds))
-    (push (format nil "notify-send -a audio -u low -t ~d -h string:x-dunst-stack-tag:audio ~@[-i ~a ~]~a ~a"
-                  (round (* 1000 *cfg-hover-seg*))
-                  (and icone (sh-quote icone))
-                  (sh-quote (if (string= titulo "") "Nenhum áudio a tocar" titulo))
-                  (sh-quote (string-trim '(#\Newline)
-                                         (format nil "~a~%~a" album artista))))
-          cmds)
-    (run-shell-command (format nil "~{~a~^; ~}" (nreverse cmds)))))
-
-(defun verificar-hover ()
-  (ignore-errors
-   (multiple-value-bind (x largura) (ponteiro-na-barra)
-     (if (and x (eq (segmento-em x largura) :audio))
-         (when (= (incf *hover-contagem*) *cfg-hover-atraso*)
-           (mostrar-capa))
-         (setf *hover-contagem* 0)))))
-
-(when *timer-hover* (ignore-errors (cancel-timer *timer-hover*)))
-(setf *timer-hover*
-      (run-with-timer 0.5 *cfg-hover-intervalo* #'verificar-hover))
-
-;;; Menu de energia: janela central com ícones e legendas. O StumpWM não
-;;; entrega cliques a janelas de mensagem, por isso escolhe-se pelo teclado:
-;;; setas (ou h l) e RET; 1 2 3 vão directo; ESC cancela.
-(defvar *power-sel* 0)
-(defvar *mapa-power* (make-sparse-keymap))
-
-(defun opcoes-power ()
-  "Lista de (ÍCONE LEGENDA ACÇÃO); ACÇÃO é um comando de shell ou :sair."
-  (list (list #xF186 "Suspender" *cfg-cmd-suspender*)
-        (list #xF011 "Desligar"  *cfg-cmd-desligar*)
-        (list #xF08B "Sair"      :sair)))
+(defun cm-lista (m) (funcall (cm-opcoes m) (cm-alvo m)))
 
 (defun celula (str px)
   "STR centrada numa célula de PX pixels (espaços dos dois lados)."
@@ -354,65 +298,156 @@
     (format nil "~a~a~a" (make-string esq :initial-element #\Space) str
             (make-string (- livre esq) :initial-element #\Space))))
 
-(defun desenhar-power ()
-  (let* ((px *cfg-power-celula*)
-         (ops (opcoes-power))
-         (total (* px (length ops)))
-         (linha-icones "")
-         (linha-legendas ""))
-    (loop for (cod nome) in ops
-          for i from 0
-          for cor = (if (= i *power-sel*) "^2" "^3")
-          do (setf linha-icones
-                   (concatenate 'string linha-icones
-                                (format nil "~a~a^n" cor (celula (icone cod "*") px)))
-                   linha-legendas
-                   (concatenate 'string linha-legendas
-                                (format nil "~a~a^n" cor (celula nome px)))))
-    (let ((*timeout-wait* 600)
-          (*message-window-y-padding* 14))
-      (message "~a"
-               (format nil "^n~a~%~%~a~%~a~%~%^3~a"
-                       (celula "Energia" total)
-                       linha-icones linha-legendas
-                       (celula "setas ou 1-3   RET ok   ESC sai" total))))))
-
-(defun fechar-power ()
+(defun fechar-menu ()
+  (setf *menu* nil)
   (pop-top-map)
   (unless (ignore-errors (funcall 'unmap-all-message-windows) t)
     (let ((*timeout-wait* 0.05))
       (message " "))))
 
+(defun desenhar-menu ()
+  (let* ((m *menu*)
+         (n-alvos (funcall (cm-n-alvos m))))
+    (if (< n-alvos 1)
+        (progn (fechar-menu) (message "Nada a mostrar"))
+        (let* ((px *cfg-menu-celula*)
+               (ops (cm-lista m))
+               (total (* px (length ops)))
+               (sub (and (cm-sub m) (funcall (cm-sub m) (cm-alvo m) n-alvos)))
+               (l-icones "") (l-leg1 "") (l-leg2 "")
+               (tem2 (some (lambda (o) (string/= (third o) "")) ops)))
+          (loop for (cod leg1 leg2) in ops
+                for i from 0
+                for cor = (if (= i (cm-sel m)) "^2" "^3")
+                do (setf l-icones (concatenate 'string l-icones
+                                               (format nil "~a~a^n" cor (celula (icone cod "*") px)))
+                         l-leg1 (concatenate 'string l-leg1
+                                             (format nil "~a~a^n" cor (celula leg1 px)))
+                         l-leg2 (concatenate 'string l-leg2
+                                             (format nil "~a~a^n" cor (celula leg2 px)))))
+          (let ((*timeout-wait* 600)
+                (*message-window-y-padding* 14)
+                (linhas (append (list (format nil "^n~a" (celula (cm-titulo m) total)))
+                                (when sub (list (format nil "^3~a^n" (celula sub total))))
+                                (list "" l-icones l-leg1)
+                                (when tem2 (list l-leg2))
+                                (list "" (format nil "^3~a^n"
+                                                 (celula (if (> n-alvos 1)
+                                                             "setas   cima/baixo muda   RET ok   ESC sai"
+                                                             "setas ou 1-9   RET ok   ESC sai")
+                                                         total))))))
+            (message "~a" (format nil "~{~a~^~%~}" linhas)))))))
+
+(defun abrir-menu (caixa)
+  (unless *menu*
+    (setf *menu* caixa)
+    (push-top-map *mapa-menu*)
+    (desenhar-menu)))
+
+(defun executar-acao (acao)
+  (handler-case
+      (typecase acao
+        (string (run-shell-command acao))
+        (function (funcall acao))
+        (t (when (eq acao :sair) (run-commands "quit"))))
+    (error (e) (message "Erro: ~a" e))))
+
+(defcommand menu-ir (n) ((:number "Opção: "))
+  "Selecciona a opção N (0 a 8) do menu aberto."
+  (when (and *menu* (< -1 n (length (cm-lista *menu*))))
+    (setf (cm-sel *menu*) n)
+    (desenhar-menu)))
+
+(defcommand menu-passo (d) ((:number "Passo: "))
+  "Move a selecção do menu aberto por D opções."
+  (when *menu*
+    (menu-ir (mod (+ (cm-sel *menu*) d) (length (cm-lista *menu*))))))
+
+(defcommand menu-alvo (d) ((:number "Alvo: "))
+  "Muda o alvo do menu aberto (outra unidade, outro lado do monitor)."
+  (when *menu*
+    (let ((n (funcall (cm-n-alvos *menu*))))
+      (when (plusp n)
+        (setf (cm-alvo *menu*) (mod (+ (cm-alvo *menu*) d) n))
+        (setf (cm-sel *menu*) (min (cm-sel *menu*) (1- (length (cm-lista *menu*)))))
+        (desenhar-menu)))))
+
+(defcommand menu-executar () ()
+  "Executa a opção escolhida do menu aberto."
+  (when *menu*
+    (let ((acao (fourth (nth (cm-sel *menu*) (cm-lista *menu*)))))
+      (fechar-menu)
+      (executar-acao acao))))
+
+(defcommand menu-fechar () ()
+  "Fecha o menu aberto sem fazer nada."
+  (when *menu* (fechar-menu)))
+
+(dolist (par '(("Right" "menu-passo 1")  ("l" "menu-passo 1")  ("C-f" "menu-passo 1")
+               ("Left"  "menu-passo -1") ("h" "menu-passo -1") ("C-b" "menu-passo -1")
+               ("Down"  "menu-alvo 1")   ("j" "menu-alvo 1")   ("C-n" "menu-alvo 1")
+               ("Up"    "menu-alvo -1")  ("k" "menu-alvo -1")  ("C-p" "menu-alvo -1")
+               ("RET" "menu-executar")
+               ("ESC" "menu-fechar") ("q" "menu-fechar") ("C-g" "menu-fechar")))
+  (define-key *mapa-menu* (kbd (first par)) (second par)))
+(dotimes (i 9)
+  (define-key *mapa-menu* (kbd (format nil "~d" (1+ i))) (format nil "menu-ir ~d" i)))
+
+;;; --- energia ---------------------------------------------------------------
 (defcommand power-menu () ()
   "Abre o menu de energia (suspender, desligar, sair)."
-  (setf *power-sel* 0)
-  (push-top-map *mapa-power*)
-  (desenhar-power))
+  (abrir-menu
+   (make-caixa-menu
+    :titulo "Energia"
+    :opcoes (lambda (alvo)
+              (declare (ignore alvo))
+              (list (list #xF186 "Suspender" "" *cfg-cmd-suspender*)
+                    (list #xF011 "Desligar"  "" *cfg-cmd-desligar*)
+                    (list #xF08B "Sair"      "" :sair))))))
 
-(defcommand power-ir (n) ((:number "Opção: "))
-  "Selecciona a opção N (0 a 2) do menu de energia."
-  (setf *power-sel* (mod n (length (opcoes-power))))
-  (desenhar-power))
+;;; --- unidades externas (utilities/discos.lisp) -----------------------------
+(defun disco-do-alvo (alvo)
+  (nth (min alvo (max 0 (1- (length *discos*)))) *discos*))
 
-(defcommand power-passo (d) ((:number "Passo: "))
-  "Move a selecção do menu de energia por D opções."
-  (power-ir (+ *power-sel* d)))
+(defcommand drive-menu () ()
+  "Abre o menu das unidades externas montadas (abrir, info, desmontar, remover)."
+  (cond (*menu* nil)
+        ((null *discos*) (message "Nenhuma unidade externa montada"))
+        (t (abrir-menu
+            (make-caixa-menu
+             :titulo "Unidades externas"
+             :n-alvos (lambda () (length *discos*))
+             :sub (lambda (alvo n)
+                    (format nil "~a~:[~;  (~d/~d)~]"
+                            (descricao-disco (disco-do-alvo alvo)) (> n 1) (1+ alvo) n))
+             :opcoes (lambda (alvo)
+                       (let ((d (disco-do-alvo alvo)))
+                         (list (list #xF07C "Abrir" ""
+                                     (format nil "~a ~a" *cfg-gestor-ficheiros*
+                                             (sh-quote (or (getf d :ponto) "/mnt"))))
+                               (list #xF05A "Informação" ""
+                                     (lambda () (info-disco d)))
+                               (list #xF127 "Desmontar" ""
+                                     (lambda () (desmontar-disco d)))
+                               (list #xF052 "Remover" "com segurança"
+                                     (lambda () (remover-disco d)))))))))))
 
-(defcommand power-executar () ()
-  "Executa a opção escolhida do menu de energia."
-  (let ((acao (third (nth *power-sel* (opcoes-power)))))
-    (fechar-power)
-    (if (eq acao :sair)
-        (run-commands "quit")
-        (run-shell-command acao))))
+;;; --- monitores (utilities/monitores.lisp) ----------------------------------
+(defparameter *lados-monitor* '(:direita :esquerda :acima :abaixo))
 
-(defcommand power-fechar () ()
-  "Fecha o menu de energia sem fazer nada."
-  (fechar-power))
-
-(dolist (par '(("Right" "power-passo 1")  ("l" "power-passo 1")  ("C-f" "power-passo 1")
-               ("Left"  "power-passo -1") ("h" "power-passo -1") ("C-b" "power-passo -1")
-               ("1" "power-ir 0") ("2" "power-ir 1") ("3" "power-ir 2")
-               ("RET" "power-executar")
-               ("ESC" "power-fechar") ("q" "power-fechar") ("C-g" "power-fechar")))
-  (define-key *mapa-power* (kbd (first par)) (second par)))
+(defcommand monitor-menu () ()
+  "Abre o menu dos monitores (estender, espelhar, só interno, só externo)."
+  (abrir-menu
+   (make-caixa-menu
+    :titulo "Monitores"
+    :alvo (or (position *cfg-monitor-lado* *lados-monitor*) 0)
+    :n-alvos (lambda () (length *lados-monitor*))
+    :sub (lambda (alvo n)
+           (declare (ignore n))
+           (format nil "estender para a ~(~a~)" (nth alvo *lados-monitor*)))
+    :opcoes (lambda (alvo)
+              (let ((lado (nth alvo *lados-monitor*)))
+                (list (list #xF0DB "Estender" "" (lambda () (monitores-estender lado)))
+                      (list #xF24D "Espelhar" "" #'monitores-espelhar)
+                      (list #xF109 "Só interno" "" #'monitores-so-interno)
+                      (list #xF26C "Só externo" "" #'monitores-so-externo)))))))

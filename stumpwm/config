@@ -5,8 +5,9 @@
 ;;; Os restantes ficam na mesma pasta e são lidos daqui, por esta ordem:
 ;;;   config          arranque: registo de erros, módulos, grupos, swank, overrides
 ;;;   vars.lisp       as variáveis que se ajustam (cores, barra, gaps, passos...)
-;;;   interface.lisp  o que se vê: fonte, cores, barra, lançador, avisos
-;;;   teclas.lisp     atalhos e os comandos que eles chamam
+;;;   interface.lisp  o que se vê: fonte, cores, barra, lançador, avisos, hover
+;;;   utilities/      monitores.lisp (xrandr) e discos.lisp (pendrives e HDs)
+;;;   teclas.lisp     atalhos, menus e os comandos que eles chamam
 ;;;
 ;;; Base: stumpwm-demo-config de James McCabe (GPLv3,
 ;;; https://github.com/jamesmccabe/stumpwm-demo-config). Alterações: nomes
@@ -53,6 +54,14 @@ que só existem depois de um load (o leitor falharia antes do rc-try)."
   (string-trim '(#\Space #\Newline #\Tab)
                (or (ignore-errors (run-shell-command cmd t)) "")))
 
+(defun sh-quote (s)
+  "S entre plicas, seguro para o shell."
+  (with-output-to-string (o)
+    (write-char #\' o)
+    (loop for c across s
+          do (if (char= c #\') (write-string "'\\''" o) (write-char c o)))
+    (write-char #\' o)))
+
 (defparameter *rc-dir*
   (let ((p (or *load-truename* *compile-file-truename*)))
     (if p
@@ -86,7 +95,8 @@ que só existem depois de um load (o leitor falharia antes do rc-try)."
 
 ;; Quicklisp (só necessário para ttf-fonts e swank)
 (rc-try "quicklisp"
-  (let ((setup (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname))))
+  (let ((setup (merge-pathnames (concatenate 'string *cfg-quicklisp-dir* "setup.lisp")
+                                (user-homedir-pathname))))
     (when (probe-file setup) (load setup))))
 
 (defun ql-carregar (sistema)
@@ -204,7 +214,11 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
     "Split current frame in n rows of equal size."
     (split-frame-eql-parts (current-group) :row amt)))
 
-;;; Atalhos e comandos: teclas.lisp
+;;; Utilitários de sistema (têm temporizadores; precisam da barra e dos menus)
+(rc-load "utilities/monitores.lisp")
+(rc-load "utilities/discos.lisp")
+
+;;; Atalhos, menus e comandos: teclas.lisp
 (rc-load "teclas.lisp")
 
 (rc-log "rc concluído: ~d erro(s); ttf=~a" *rc-erros* *ttf-ok*)
