@@ -11,8 +11,8 @@ setxkbmap -model abnt2 -layout br -option ctrl:nocaps
 xset r rate 250 40      # repetição de tecla: atraso 250 ms, 40 por segundo
 xset -b                 # sem beep
 
-export GTK_THEME=Adwaita:dark
-export XCURSOR_THEME=AppleCursor XCURSOR_SIZE=24
+# export GTK_THEME=Adwaita:dark
+# export XCURSOR_THEME=AppleCursor XCURSOR_SIZE=24
 command -v qt5ct >/dev/null && export QT_QPA_PLATFORMTHEME=qt5ct
 xsetroot -cursor_name left_ptr      # cursor normal sobre o fundo (e não o X)
 

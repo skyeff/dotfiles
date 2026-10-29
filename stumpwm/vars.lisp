@@ -34,7 +34,7 @@
 (defparameter *cfg-fonte-dirs* '(".local/share/fonts/")) ; relativos a ~
 (defparameter *cfg-fonte-estilo*   "Bold")     ; "Regular" ou "Bold"
 (defparameter *cfg-fonte-tamanho*  13)         ; texto
-(defparameter *cfg-fonte-icones*   17)         ; ícones (se cortarem: baixa isto
+(defparameter *cfg-fonte-icones*   18)         ; ícones (se cortarem: baixa isto
                                                ; ou sobe *cfg-barra-padding-y*)
 (defparameter *cfg-fonte-core*     "-xos4-terminus-medium-r-normal--20-*-*-*-*-*-*-*")
 
@@ -124,3 +124,32 @@
 (defparameter *cfg-swank-porta* 4004)
 (defparameter *cfg-capturas-dir* "~/Pictures")   ; destino de C-z s / C-z S
 
+;;;; =====================================================================
+;;;; PAINEL DE CONTROLO, REDE E BATERIA (interface.lisp, utilities/painel.lisp)
+;;;; =====================================================================
+
+;;; Ícones (códigos Nerd Font; Font Awesome, dentro do plano base)
+(defparameter *cfg-icone-wifi*    #xF0928)      ; ligado
+(defparameter *cfg-icone-semrede* #xF127)      ; sem rede (se a fonte for a v3: #xF05AA)
+(defparameter *cfg-icone-bateria* nil)         ; nil = por nível (#xF240-#xF244); ou um código fixo
+(defparameter *cfg-icone-tomada*  #xEEA1)      ; ligada à corrente (#xF0E7 = raio)
+(defparameter *cfg-icone-painel*  #xEE81)      ; botão do painel de controlo
+(defparameter *cfg-icone-cafe*    #xEC15)      ; modo café activo
+(defparameter *cfg-icone-noturna* #xF186)      ; luz noturna activa
+
+;;; Aviso central de bateria baixa (só a descarregar; uma vez por limiar)
+(defparameter *cfg-bateria-avisos*    '(15 5)) ; % que disparam o aviso
+(defparameter *cfg-bateria-aviso-seg* 12)      ; duração do aviso (s)
+
+;;; Painel de controlo
+(defparameter *cfg-cmd-wifi-gestor*      ; abre o impala num kitty (janela flutuante)
+  (format nil "~a --class impala --title Impala -e impala" *cfg-terminal*))
+(defparameter *cfg-cmd-bluetooth-gestor* "blueman-manager")
+(defparameter *cfg-painel-celula*  190)        ; largura de cada opção do painel (px)
+(defparameter *cfg-painel-padding* 22)         ; folga vertical do painel (px)
+(defparameter *cfg-flutuantes-classes*   ; estas classes abrem em janela flutuante
+  '("impala" "blueman-manager"))
+(defparameter *cfg-dpms-desligar* 900)         ; s até o ecrã desligar (= xinitrc); o café suspende-o
+(defparameter *cfg-noturna-temp*  4000)        ; temperatura da luz noturna (K)
+(defparameter *cfg-noturna-ligar*    "redshift -P -O ~d")  ; ~d = temperatura
+(defparameter *cfg-noturna-desligar* "redshift -x")        ; (gammastep usa as mesmas opções)

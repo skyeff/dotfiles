@@ -6,7 +6,8 @@
 ;;;   config          arranque: registo de erros, módulos, grupos, swank, overrides
 ;;;   vars.lisp       as variáveis que se ajustam (cores, barra, gaps, passos...)
 ;;;   interface.lisp  o que se vê: fonte, cores, barra, lançador, avisos, hover
-;;;   utilities/      monitores.lisp (xrandr) e discos.lisp (pendrives e HDs)
+;;;   utilities/      monitores.lisp (xrandr), discos.lisp (pendrives e HDs)
+;;;                   e painel.lisp (rádios, perfis de energia, café, luz noturna)
 ;;;   teclas.lisp     atalhos, menus e os comandos que eles chamam
 ;;;
 ;;; Base: stumpwm-demo-config de James McCabe (GPLv3,
@@ -217,6 +218,7 @@ Type^2 (in-package :stumpwm)^n in Slime REPL." *port-number*))))
 ;;; Utilitários de sistema (têm temporizadores; precisam da barra e dos menus)
 (rc-load "utilities/monitores.lisp")
 (rc-load "utilities/discos.lisp")
+(rc-load "utilities/painel.lisp")
 
 ;;; Atalhos, menus e comandos: teclas.lisp
 (rc-load "teclas.lisp")

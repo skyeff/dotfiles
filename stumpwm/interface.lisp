@@ -146,6 +146,8 @@
 (defvar *estado-audio* "")
 (defvar *estado-drive* "")      ; ícone do HD: só com unidade montada (utilities/discos.lisp)
 (defvar *estado-monitor* "")    ; ícone do monitor: só com ecrã extra (utilities/monitores.lisp)
+(defvar *estado-cafe* "")       ; chávena: só com o modo café activo (utilities/painel.lisp)
+(defvar *estado-noturna* "")    ; lua: só com a luz noturna activa (utilities/painel.lisp)
 
 (defun ler-linha (caminho)
   (with-open-file (s caminho :if-does-not-exist nil)
@@ -168,40 +170,92 @@
                      (format nil "/sys/class/power_supply/~a/capacity" n))))
            (cons *cfg-bateria* '("BAT0" "BAT1" "BATT" "CMB0" "CMB1"))))
 
-(defun fmt-bateria ()
-  "BAT 88%: rótulo cinza, valor branco. Rosa: rótulo a carregar, valor <= 15%."
+(defun bateria-leitura ()
+  "(values CAPACIDADE ESTADO) da bateria, ou NIL sem bateria."
   (let ((nome (achar-bateria)))
-    (if (null nome)
+    (when nome
+      (let ((dir (format nil "/sys/class/power_supply/~a/" nome)))
+        (values (parse-integer
+                 (or (ler-linha (concatenate 'string dir "capacity")) "")
+                 :junk-allowed t)
+                (or (ler-linha (concatenate 'string dir "status")) ""))))))
+
+(defun nivel-glifo (cap)
+  "Glifo da bateria por nível (cheia ... vazia)."
+  (cond ((>= cap 88) #xF240) ((>= cap 63) #xF241) ((>= cap 38) #xF242)
+        ((>= cap 13) #xF243) (t #xF244)))
+
+(defun fmt-bateria ()
+  "Ícone e %: bateria comum (por nível) ou tomada, quando ligada à corrente.
+Rosa só a descarregar abaixo do primeiro limiar de aviso."
+  (multiple-value-bind (cap st) (bateria-leitura)
+    (if (null cap)
         ""
-        (let* ((dir (format nil "/sys/class/power_supply/~a/" nome))
-               (cap (parse-integer
-                     (or (ler-linha (concatenate 'string dir "capacity")) "")
-                     :junk-allowed t))
-               (st (or (ler-linha (concatenate 'string dir "status")) "")))
-          (if (null cap)
-              ""
-              (format nil "~aBAT^n~a~a~d%^n"
-                      (if (string= st "Charging") "^2" "^3")
-                      *cfg-espaco-icone*
-                      (if (<= cap 15) "^2" "")
-                      cap))))))
+        (let* ((tomada (member st '("Charging" "Full" "Not charging") :test #'string=))
+               (baixa (and (not tomada) (<= cap (reduce #'max *cfg-bateria-avisos*))))
+               (glifo (cond (tomada *cfg-icone-tomada*)
+                            (*cfg-icone-bateria*)
+                            (t (nivel-glifo cap)))))
+          (format nil "~a~a^n~a~a~d%^n"
+                  (if baixa "^2" "^3")
+                  (icone glifo (if tomada "AC" "BAT"))
+                  *cfg-espaco-icone*
+                  (if baixa "^2" "")
+                  cap)))))
+
+;;; Aviso central: uma vez por limiar de *cfg-bateria-avisos* em cada descarga;
+;;; volta a armar-se ao ligar o carregador ou quando a carga sobe 5 pontos
+;;; acima do limiar mais alto.
+(defvar *bateria-avisados* nil "Limiares já avisados nesta descarga.")
+
+(defun avisar-bateria (cap limiar)
+  (let ((*timeout-wait* *cfg-bateria-aviso-seg*))
+    (message "~a" (format nil "~a~%~a"
+                          (format nil "^2~a  Bateria a ~d%^n" (icone #xF244 "!") cap)
+                          (if (<= limiar 5) "Liga o carregador já" "Liga o carregador")))))
+
+(defun verificar-bateria-baixa ()
+  (multiple-value-bind (cap st) (bateria-leitura)
+    (cond ((null cap) nil)
+          ((or (string/= st "Discharging")
+               (> cap (+ 5 (reduce #'max *cfg-bateria-avisos*))))
+           (setf *bateria-avisados* nil))
+          (t (dolist (l (sort (copy-list *cfg-bateria-avisos*) #'<))
+               (when (and (<= cap l) (not (member l *bateria-avisados*)))
+                 (dolist (m *cfg-bateria-avisos*)      ; os limiares acima ficam dados
+                   (when (>= m l) (pushnew m *bateria-avisados*)))
+                 (avisar-bateria cap l)
+                 (return)))))))
+
+(defparameter *proc-net-dev* "/proc/net/dev")
+(defparameter *sys-net-dir* "/sys/class/net/")
+
+(defun interfaces-fisicas ()
+  "Nomes das interfaces de rede físicas: as que têm /sys/class/net/<n>/device."
+  (let ((res '()))
+    (with-open-file (s *proc-net-dev* :if-does-not-exist nil)
+      (when s
+        (read-line s nil nil) (read-line s nil nil)
+        (loop for l = (read-line s nil nil)
+              while l
+              do (let* ((p (position #\: l))
+                        (nome (and p (string-trim " " (subseq l 0 p)))))
+                   (when (and nome (plusp (length nome))
+                              (probe-file (format nil "~a~a/device" *sys-net-dir* nome)))
+                     (push nome res))))))
+    (nreverse res)))
+
+(defun rede-conectada-p ()
+  "Alguma interface física (Wi-Fi ou cabo) com ligação activa?"
+  (some (lambda (n)
+          (equal (ler-linha (format nil "~a~a/operstate" *sys-net-dir* n)) "up"))
+        (interfaces-fisicas)))
 
 (defun fmt-rede ()
-  "Ícone cinza e qualidade do Wi-Fi em branco (/proc/net/wireless, escala 0-70)."
-  (with-open-file (s "/proc/net/wireless" :if-does-not-exist nil)
-    (if (null s)
-        ""
-        (progn
-          (read-line s nil nil) (read-line s nil nil)
-          (let ((l (read-line s nil nil)))
-            (if (null l)
-                ""
-                (let ((q (parse-integer (or (third (palavras l)) "")
-                                        :junk-allowed t)))
-                  (if (and q (plusp q))
-                      (format nil "^3~a^n~a~d%" (icone #xF1EB "WiFi")
-                              *cfg-espaco-icone* (min 100 (round (* q 100) 70)))
-                      (format nil "^2~a^n" (icone #xF1EB "WiFi"))))))))))
+  "Um só ícone: Wi-Fi cinza se há ligação; outro, a rosa, sem rede."
+  (if (rede-conectada-p)
+      (format nil "^3~a^n" (icone *cfg-icone-wifi* "WiFi"))
+      (format nil "^2~a^n" (icone *cfg-icone-semrede* "sem rede"))))
 
 (defparameter *dias-pt*                ; "Sáb" sem depender da codificação do rc
   (vector "Seg" "Ter" "Qua" "Qui" "Sex"
@@ -228,6 +282,10 @@
   (multiple-value-bind (pct mudo) (estado-volume)
     (texto-audio pct mudo)))
 
+(defun fmt-painel ()
+  "Botão do painel de controlo: ícone cinza (o clique está em teclas.lisp)."
+  (format nil "^3~a^n" (icone *cfg-icone-painel* "CFG")))
+
 (defun fmt-power ()
   "Botão de energia: ícone cinza (o clique está em teclas.lisp)."
   (format nil "^3~a^n" (icone #xF011 "OFF")))
@@ -236,7 +294,8 @@
   (flet ((seguro (f) (handler-case (funcall f) (error () ""))))
     (setf *estado-bateria* (seguro #'fmt-bateria)
           *estado-rede*    (seguro #'fmt-rede)
-          *estado-audio*   (seguro #'fmt-audio))))
+          *estado-audio*   (seguro #'fmt-audio)))
+  (handler-case (verificar-bateria-baixa) (error () nil)))
 
 (rc-log "bateria detectada: ~a" (achar-bateria))
 
@@ -262,11 +321,14 @@ lista de (ID TEXTO ESPAÇO-ANTES). Serve a barra e o teste de cliques."
              (list (list :swank   (seg-swank) "")
                    (list :monitor *estado-monitor*  *cfg-espaco-seg*)
                    (list :drive   *estado-drive*    *cfg-espaco-seg*)
+                   (list :cafe    *estado-cafe*     *cfg-espaco-seg*)
+                   (list :noturna *estado-noturna*  *cfg-espaco-seg*)
                    (list :audio   *estado-audio*    *cfg-espaco-seg*)
                    (list :rede    *estado-rede*     *cfg-espaco-seg*)
                    (list :bateria *estado-bateria*  *cfg-espaco-seg*)
                    (list :hora    (handler-case (fmt-hora) (error () ""))
                          *cfg-espaco-hora*)
+                   (list :painel  (fmt-painel)      *cfg-espaco-power*)
                    (list :power   (fmt-power)       *cfg-espaco-power*))))
 
 (add-screen-mode-line-formatter
